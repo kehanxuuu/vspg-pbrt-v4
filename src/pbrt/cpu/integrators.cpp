@@ -3704,11 +3704,12 @@ std::unique_ptr<Integrator> Integrator::Create(
 }
 
 // GuidedPathIntegrator Method Definitions
-GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
+GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
                                Primitive aggregate, std::vector<Light> lights,
                                const std::string &lightSampleStrategy, bool regularize)
     : RayIntegrator(camera, sampler, aggregate, lights),
       maxDepth(maxDepth),
+      minRRDepth(minRRDepth),
       colorSpace(colorSpace),
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
       regularize(regularize) {
@@ -3902,7 +3903,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         SampledSpectrum rrBeta = beta * etaScale;
         // termination probability
         Float q = 0.f;
-        if (rrBeta.MaxComponentValue() < 1 && depth > 1) {
+        if (rrBeta.MaxComponentValue() < 1 && depth > minRRDepth) {
             q = std::max<Float>(0, 1 - rrBeta.MaxComponentValue());
             if (sampler.Get1D() < q)
                 break;
@@ -3979,9 +3980,10 @@ std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
     const ParameterDictionary &parameters, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
     Primitive aggregate, std::vector<Light> lights, const FileLoc *loc) {
     int maxDepth = parameters.GetOneInt("maxdepth", 5);
+    int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);
-    return std::make_unique<GuidedPathIntegrator>(maxDepth, colorSpace, camera, sampler, aggregate, lights,
+    return std::make_unique<GuidedPathIntegrator>(maxDepth, minRRDepth, colorSpace, camera, sampler, aggregate, lights,
                                             lightStrategy, regularize);
 }
 
