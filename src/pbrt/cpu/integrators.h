@@ -356,7 +356,7 @@ class VolPathIntegrator : public RayIntegrator {
 class GuidedVolPathIntegrator : public RayIntegrator {
   public:
     // VolPathIntegrator Public Methods
-    GuidedVolPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+    GuidedVolPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool surfaceGuiding, bool volumeGuiding, const GuidingType surfaceGuidingType, const GuidingType volumeGuidingType, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
                       std::vector<Light> lights,
                       const std::string &lightSampleStrategy = "bvh",
                       bool regularize = false);
@@ -388,11 +388,13 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     const RGBColorSpace *colorSpace;
 
     // Path Guiding
-    bool enableGuiding {true};
+    //bool enableGuiding {true};
     bool guideSurface {true};
     bool guideVolume {true};
-    float guideSurfaceProbability = {0.5f};
-    float guideVolumeProbability = {0.5f};
+    float guideSurfaceProbability {0.5f};
+    float guideVolumeProbability {0.5f};
+    GuidingType surfaceGuidingType {EGuideMIS};
+    GuidingType volumeGuidingType {EGuideMIS};
     int guideNumTrainingWaves = {128};
     bool guideTraining = {true};
     float guidingInfiniteLightDistance {1e6f};

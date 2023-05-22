@@ -3722,6 +3722,7 @@ GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool us
         //pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_VMM);
         pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
         //pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_QUADTREE);
+        guiding_fieldSettings.deterministic = true;
 
         //((PGLKDTreeArguments*)guiding_fieldSettings.spatialSturctureArguments)->knnLookup = false;
         guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldSettings);
@@ -4006,7 +4007,7 @@ std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
 }
 
 // GuidedVolPathIntegrator Method Definitions
-GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool surfaceGuiding, bool volumeGuiding, const GuidingType surfaceGuidingType, const GuidingType volumeGuidingType, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
                       std::vector<Light> lights,
                       const std::string &lightSampleStrategy,
                       bool regularize)
@@ -4014,15 +4015,16 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
         maxDepth(maxDepth),
         minRRDepth(minRRDepth),
         useNEE(useNEE),
-        enableGuiding(enableGuiding),
+        guideSurface(surfaceGuiding),
+        guideVolume(volumeGuiding),
+        surfaceGuidingType(surfaceGuidingType),
+        volumeGuidingType(volumeGuidingType),
         colorSpace(colorSpace),
         lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
         regularize(regularize) {
             guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
-            //pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_VMM);
             pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
-            //pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_QUADTREE);
-
+            guiding_fieldSettings.deterministic = true;
             //((PGLKDTreeArguments*)guiding_fieldSettings.spatialSturctureArguments)->knnLookup = false;
             guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldSettings);
             guiding_sampleStorage = new openpgl::cpp::SampleStorage();
@@ -4082,8 +4084,8 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
     int depth = 0;
     Float etaScale = 1;
 
-    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, enableGuiding);
-    GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, enableGuiding);
+    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, guideSurface, surfaceGuidingType);
+    GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, guideVolume, volumeGuidingType);
     float rr_correction = 1.0f;
     float misPDF = 1.0f;
 
@@ -4613,10 +4615,15 @@ std::unique_ptr<GuidedVolPathIntegrator> GuidedVolPathIntegrator::Create(
     int maxDepth = parameters.GetOneInt("maxdepth", 5);
     int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
     bool useNEE = parameters.GetOneBool("usenee", true);
-    bool enableGuiding = parameters.GetOneBool("enableguiding", true);
+    bool guideSurface = parameters.GetOneBool("surfaceguiding", true);
+    bool guideVolume = parameters.GetOneBool("volumeguiding", true);
+    std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
+    GuidingType surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
+    std::string strVolumeGuidingType = parameters.GetOneString("volumeguidingtype", "mis");
+    GuidingType volumeGuidingType = strVolumeGuidingType == "mis" ? EGuideMIS : EGuideRIS;
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);
-    return std::make_unique<GuidedVolPathIntegrator>(maxDepth, minRRDepth, useNEE, enableGuiding, colorSpace, camera, sampler, aggregate,
+    return std::make_unique<GuidedVolPathIntegrator>(maxDepth, minRRDepth, useNEE, guideSurface, guideVolume, surfaceGuidingType, volumeGuidingType, colorSpace, camera, sampler, aggregate,
                                                lights, lightStrategy, regularize);
 }
 

@@ -13,12 +13,12 @@
 namespace pbrt {
 
 
-struct GuidedBSDF{
+enum GuidingType{
+    EGuideMIS = 0,
+    EGuideRIS
+};
 
-    enum BSDFGuidingType{
-        EBSDFGuideMIS = 0,
-        EBSDFGuideRIS
-    };
+struct GuidedBSDF{
 
     struct RISSample{
         float bsdfPDF {0.f};
@@ -35,11 +35,12 @@ struct GuidedBSDF{
     };
 
     GuidedBSDF(Sampler* sampler, openpgl::cpp::Field* guiding_field,
-    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true){
+    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideRIS){
         m_guiding_field = guiding_field;
         m_surfaceSamplingDistribution = surfaceSamplingDistribution;
         m_enableGuiding = enableGuiding;
         m_sampler = sampler;
+        m_guidingType = EGuideMIS;
     }
 
     bool init(const BSDF* bsdf, const RayDifferential& ray, pstd::optional<pbrt::ShapeIntersection> si, float &rand){
@@ -217,7 +218,7 @@ struct GuidedBSDF{
         TransportMode mode = TransportMode::Radiance,
         BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const {
 
-        if(guidingType == EBSDFGuideMIS) { 
+        if(m_guidingType == EGuideMIS) { 
             return Sample_f_MIS(woRender, u, u2, mode, sampleFlags);
         } else { // RIS
             return Sample_f_RIS(woRender, u, u2, mode, sampleFlags);
@@ -233,7 +234,7 @@ struct GuidedBSDF{
             float pdf = 0.f;
             pgl_vec3f pglwi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
             float guidedPDF = m_surfaceSamplingDistribution->PDF(pglwi);
-            if(guidingType == EBSDFGuideMIS) { 
+            if(m_guidingType == EGuideMIS) { 
                 pdf = ((1.0f - guidingProbability) * bsdfPDF) + (guidingProbability * guidedPDF);
             } else { // RIS
                 pdf = (0.5f * bsdfPDF) + (0.5f * guidedPDF);
@@ -249,7 +250,7 @@ private:
     float guidingProbability = 0.5f;
     bool useGuiding = false;
 
-    BSDFGuidingType guidingType {EBSDFGuideRIS};
+    GuidingType m_guidingType {EGuideRIS};
 
     openpgl::cpp::Field* m_guiding_field;
     openpgl::cpp::SurfaceSamplingDistribution* m_surfaceSamplingDistribution;
@@ -259,29 +260,24 @@ private:
 
 struct GuidedPhaseFunction{
 
-    enum PhaseGuidingType{
-        EPhaseGuideMIS = 0,
-        EPhaseGuideRIS
-    };
-
     struct RISSample{
         float phasePDF {0.f};
         float guidingPDF {0.f};
         float misPDF {0.f};
         float incomingRadiancePDF {0.f};
-        SampledSpectrum f;
+        float p;
         Vector3f wiRender;
-        float eta {1.0f};
-        float sampledRoughness{1.0f};
+        float meanCosine{0.0f};
         float risWeight{0.f};
     };
 
     GuidedPhaseFunction(Sampler* sampler, openpgl::cpp::Field* guiding_field,
-    openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution, bool enableGuiding = true){
+    openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideMIS){
         m_guiding_field = guiding_field;
         m_volumeSamplingDistribution = volumeSamplingDistribution;
         m_enableGuiding = enableGuiding;
         m_sampler = sampler;
+        m_guidingType = guidingType;
     }
 
     bool init(const PhaseFunction* phase, const Point3f& p, const Vector3f& wo, float &rand){
@@ -352,8 +348,8 @@ struct GuidedPhaseFunction{
         Vector3f woRender, Point2f u) const {
 
         pstd::optional<PhaseFunctionSample> ps = {};
-/*
-        bool sampleBSDF = true;
+
+        bool samplePhase = true;
         if (!useGuiding) {
             return m_phase->Sample_p(woRender, u);
         }
@@ -361,46 +357,42 @@ struct GuidedPhaseFunction{
         const float uniformIncomingRadiancePDF = ((1.0f/(4.0f * M_PI))); 
         RISSample risSamples[2];
         // RIS0 - sample BSDF
-        pstd::optional<BSDFSample> bs0 = m_bsdf->Sample_f(woRender, u, u2, mode, sampleFlags);
-        if(bs0) {
-            risSamples[0].f = bs0->f;
-            risSamples[0].eta = bs0->eta;
-            risSamples[0].sampledRoughness = bs0->sampledRoughness;
-            risSamples[0].bsdfPDF = bs0->pdf;
-            risSamples[0].wiRender = bs0->wi;
-            pgl_vec3f pglwi0 = openpgl::cpp::Vector3(bs0->wi[0], bs0->wi[1], bs0->wi[2]);
-            risSamples[0].guidingPDF = m_surfaceSamplingDistribution->PDF(pglwi0);
-            risSamples[0].incomingRadiancePDF = m_surfaceSamplingDistribution->IncomingRadiancePDF(pglwi0);
-            risSamples[0].flags = bs0->flags;
-            risSamples[0].misPDF = 0.5f * (risSamples[0].bsdfPDF + risSamples[0].guidingPDF);
+        pstd::optional<PhaseFunctionSample> ps0 = m_phase->Sample_p(woRender, u);
+        if(ps0) {
+            risSamples[0].p = ps0->p;
+            risSamples[0].meanCosine = ps0->meanCosine;
+            risSamples[0].phasePDF = ps0->pdf;
+            risSamples[0].wiRender = ps0->wi;
+            pgl_vec3f pglwi0 = openpgl::cpp::Vector3(ps0->wi[0], ps0->wi[1], ps0->wi[2]);
+            risSamples[0].guidingPDF = m_volumeSamplingDistribution->PDF(pglwi0);
+            risSamples[0].incomingRadiancePDF = m_volumeSamplingDistribution->IncomingRadiancePDF(pglwi0);
+            risSamples[0].misPDF = 0.5f * (risSamples[0].phasePDF + risSamples[0].guidingPDF);
         }
         // RIS1 - sample guiding
         Point2f sample2D1 = m_sampler->Get2D();
         pgl_point2f pglSample1 = openpgl::cpp::Point2(sample2D1[0], sample2D1[1]);
         pgl_vec3f pglwi1;
-        risSamples[1].guidingPDF = m_surfaceSamplingDistribution->SamplePDF(pglSample1, pglwi1);
-        risSamples[1].incomingRadiancePDF = m_surfaceSamplingDistribution->IncomingRadiancePDF(pglwi1);
+        risSamples[1].guidingPDF = m_volumeSamplingDistribution->SamplePDF(pglSample1, pglwi1);
+        risSamples[1].incomingRadiancePDF = m_volumeSamplingDistribution->IncomingRadiancePDF(pglwi1);
         Vector3f wiRender = Vector3f(pglwi1.x, pglwi1.y, pglwi1.z);
-        risSamples[1].f = m_bsdf->f(woRender, wiRender, mode);
-        risSamples[1].eta = m_bsdf->GetEta();
-        risSamples[1].sampledRoughness = m_bsdf->GetRoughness();
-        risSamples[1].bsdfPDF = m_bsdf->PDF(woRender, wiRender);
+        risSamples[1].p = m_phase->p(woRender, wiRender);
+        risSamples[1].meanCosine = m_phase->MeanCosine();
+        risSamples[1].phasePDF = m_phase->PDF(woRender, wiRender);
         risSamples[1].wiRender = wiRender;
-        risSamples[1].flags = m_bsdf->Flags();
-        risSamples[1].misPDF = 0.5f * (risSamples[1].bsdfPDF + risSamples[1].guidingPDF);
+        risSamples[1].misPDF = 0.5f * (risSamples[1].phasePDF + risSamples[1].guidingPDF);
 
         // Calculating RIS weights
         float sumWeightsRIS = 0.f;
         int numSamplesRIS = 0;
-        if(risSamples[0].bsdfPDF > 0.f) {
-            risSamples[0].risWeight = (risSamples[0].bsdfPDF * ((1.0f - guidingProbability) * uniformIncomingRadiancePDF + guidingProbability * risSamples[0].incomingRadiancePDF));
+        if(risSamples[0].phasePDF > 0.f) {
+            risSamples[0].risWeight = (risSamples[0].phasePDF * ((1.0f - guidingProbability) * uniformIncomingRadiancePDF + guidingProbability * risSamples[0].incomingRadiancePDF));
             risSamples[0].risWeight /= risSamples[0].misPDF;
             sumWeightsRIS += risSamples[0].risWeight;
             numSamplesRIS++;
         }
         
-        if(risSamples[1].bsdfPDF > 0.f) {
-            risSamples[1].risWeight = (risSamples[1].bsdfPDF * ((1.0f - guidingProbability) * uniformIncomingRadiancePDF + guidingProbability * risSamples[1].incomingRadiancePDF));
+        if(risSamples[1].phasePDF > 0.f) {
+            risSamples[1].risWeight = (risSamples[1].phasePDF * ((1.0f - guidingProbability) * uniformIncomingRadiancePDF + guidingProbability * risSamples[1].incomingRadiancePDF));
             risSamples[1].risWeight /= risSamples[1].misPDF;
             sumWeightsRIS += risSamples[1].risWeight;
             numSamplesRIS++;
@@ -409,7 +401,7 @@ struct GuidedPhaseFunction{
         // Checking if there is any valid sample
         if(numSamplesRIS == 0 || sumWeightsRIS <=0.f)
         {
-            return bs;
+            return ps;
         }
 
         // Selecting RIS sample
@@ -431,17 +423,16 @@ struct GuidedPhaseFunction{
         
         // PDF used for MIS with NEE (1 BSDF and 1 guiding sample)
         float misPdf = risSamples[idxRIS].misPDF;
-        bs = BSDFSample(risSamples[idxRIS].f, risSamples[idxRIS].wiRender, pdf, risSamples[idxRIS].flags, risSamples[idxRIS].sampledRoughness, risSamples[idxRIS].eta, false);
-        bs->bsdfPdf = risSamples[idxRIS].bsdfPDF;
-        bs->misPdf = misPdf;
-*/
+        ps = PhaseFunctionSample{risSamples[idxRIS].p, risSamples[idxRIS].wiRender, 
+                        risSamples[idxRIS].meanCosine, pdf, risSamples[idxRIS].phasePDF, misPdf};
+
         return ps;
     }
 
     pstd::optional<PhaseFunctionSample> Sample_p(
         Vector3f woRender, Point2f u) const {
 
-        if(guidingType == EPhaseGuideMIS) { 
+        if(m_guidingType == EGuideMIS) { 
             return Sample_p_MIS(woRender, u);
         } else { // RIS
             return Sample_p_RIS(woRender, u);
@@ -455,7 +446,7 @@ struct GuidedPhaseFunction{
             float pdf = 0.f;
             pgl_vec3f pglwi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
             float guidedPDF = m_volumeSamplingDistribution->PDF(pglwi);
-            if(guidingType == EPhaseGuideMIS) { 
+            if(m_guidingType == EGuideMIS) { 
                 pdf = ((1.0f - guidingProbability) * phasePDF) + (guidingProbability * guidedPDF);
             } else { // RIS
                 pdf = (0.5f * phasePDF) + (0.5f * guidedPDF);
@@ -475,7 +466,7 @@ private:
     float guidingProbability = 0.5f;
     bool useGuiding = false;
 
-    PhaseGuidingType guidingType {EPhaseGuideMIS};
+    GuidingType m_guidingType {EGuideMIS};
 
     openpgl::cpp::Field* m_guiding_field;
     openpgl::cpp::VolumeSamplingDistribution* m_volumeSamplingDistribution;
