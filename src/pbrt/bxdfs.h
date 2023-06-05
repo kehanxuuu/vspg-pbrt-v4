@@ -176,6 +176,58 @@ class DiffuseTransmissionBxDF {
     SampledSpectrum R, T;
 };
 
+
+// CookTorranceBxDF Definition
+class CookTorranceBxDF {
+  public:
+    // CookTorranceBxDF Public Methods
+    CookTorranceBxDF() = default;
+    PBRT_CPU_GPU
+    CookTorranceBxDF(SampledSpectrum R, Float eta, TrowbridgeReitzDistribution mfDistrib)
+        : R(R), eta(eta), mfDistrib(mfDistrib) {}
+
+    PBRT_CPU_GPU
+    BxDFFlags Flags() const {
+        BxDFFlags flags = (eta == 1) ? BxDFFlags::DiffuseReflection
+                                     : (BxDFFlags::Reflection | BxDFFlags::DiffuseReflection);
+        return flags;
+        //return flags |
+        //       (mfDistrib.EffectivelySmooth() ? BxDFFlags::Specular : BxDFFlags::Glossy);
+    }
+
+    PBRT_CPU_GPU
+    pstd::optional<BSDFSample> Sample_f(
+        Vector3f wo, Float uc, Point2f u, TransportMode mode,
+        BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const;
+
+    PBRT_CPU_GPU
+    SampledSpectrum f(Vector3f wo, Vector3f wi, TransportMode mode) const;
+    PBRT_CPU_GPU
+    Float PDF(Vector3f wo, Vector3f wi, TransportMode mode,
+              BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const;
+
+    PBRT_CPU_GPU
+    static constexpr const char *Name() { return "CookTorranceBxDF"; }
+
+    std::string ToString() const;
+
+    PBRT_CPU_GPU
+    void Regularize() { mfDistrib.Regularize(); }
+
+    PBRT_CPU_GPU
+    float GetEta() const { return eta; }
+
+    PBRT_CPU_GPU 
+    float GetRoughness() const {return mfDistrib.MinAlpha(); }
+
+  private:
+    // CookTorranceBxDF Private Members
+    SampledSpectrum R;
+    Float eta;
+    TrowbridgeReitzDistribution mfDistrib;
+};
+
+
 // DielectricBxDF Definition
 class DielectricBxDF {
   public:

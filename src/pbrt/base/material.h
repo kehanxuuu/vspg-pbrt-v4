@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -22,6 +23,7 @@ struct MaterialEvalContext;
 class CoatedDiffuseMaterial;
 class CoatedConductorMaterial;
 class ConductorMaterial;
+class CookTorranceMaterial;
 class DielectricMaterial;
 class DiffuseMaterial;
 class DiffuseTransmissionMaterial;
@@ -34,7 +36,7 @@ class MixMaterial;
 // Material Definition
 class Material
     : public TaggedPointer<  // Material Types
-          CoatedDiffuseMaterial, CoatedConductorMaterial, ConductorMaterial,
+          CoatedDiffuseMaterial, CoatedConductorMaterial, ConductorMaterial, CookTorranceMaterial,
           DielectricMaterial, DiffuseMaterial, DiffuseTransmissionMaterial, HairMaterial,
           MeasuredMaterial, SubsurfaceMaterial, ThinDielectricMaterial, MixMaterial
 

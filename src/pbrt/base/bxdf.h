@@ -162,6 +162,7 @@ class HairBxDF;
 class MeasuredBxDF;
 class ConductorBxDF;
 class NormalizedFresnelBxDF;
+class CookTorranceBxDF;
 class CoatedDiffuseBxDF;
 class CoatedConductorBxDF;
 
@@ -169,7 +170,7 @@ class CoatedConductorBxDF;
 class BxDF
     : public TaggedPointer<DiffuseTransmissionBxDF, DiffuseBxDF, CoatedDiffuseBxDF,
                            CoatedConductorBxDF, DielectricBxDF, ThinDielectricBxDF,
-                           HairBxDF, MeasuredBxDF, ConductorBxDF, NormalizedFresnelBxDF> {
+                           HairBxDF, MeasuredBxDF, ConductorBxDF, NormalizedFresnelBxDF, CookTorranceBxDF> {
   public:
     // BxDF Interface
     PBRT_CPU_GPU inline BxDFFlags Flags() const;

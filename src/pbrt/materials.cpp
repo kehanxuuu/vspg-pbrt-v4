@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -248,6 +249,99 @@ ConductorMaterial *ConductorMaterial::Create(const TextureParameterDictionary &p
     return alloc.new_object<ConductorMaterial>(eta, k, reflectance, uRoughness,
                                                vRoughness, displacement, normalMap,
                                                remapRoughness);
+}
+
+// CookTorranceMaterial Method Definitions
+template <typename TextureEvaluator>
+CookTorranceBxDF CookTorranceMaterial::GetBxDF(TextureEvaluator texEval,
+                                                 const MaterialEvalContext &ctx,
+                                                 SampledWavelengths &lambda) const {
+    // Initialize diffuse component of plastic material
+    SampledSpectrum r = Clamp(texEval(reflectance, ctx, lambda), 0, 1);
+
+    // Create microfacet distribution _distrib_ for coated diffuse material
+    Float urough = texEval(uRoughness, ctx);
+    Float vrough = texEval(vRoughness, ctx);
+    if (remapRoughness) {
+        urough = TrowbridgeReitzDistribution::RoughnessToAlpha(urough);
+        vrough = TrowbridgeReitzDistribution::RoughnessToAlpha(vrough);
+    }
+    urough = std::max(0.001f, urough);
+    vrough = std::max(0.001f, vrough);
+    TrowbridgeReitzDistribution distrib(urough, vrough);
+
+    //Float thick = texEval(thickness, ctx);
+
+    Float sampledEta = eta(lambda[0]);
+    if (!eta.template Is<ConstantSpectrum>())
+        lambda.TerminateSecondary();
+    if (sampledEta == 0)
+        sampledEta = 1;
+
+    //SampledSpectrum a = Clamp(texEval(albedo, ctx, lambda), 0, 1);
+    //Float gg = Clamp(texEval(g, ctx), -1, 1);
+
+    return CookTorranceBxDF(r, sampledEta, distrib);
+}
+
+// Explicit template instantiation
+template CookTorranceBxDF CookTorranceMaterial::GetBxDF(
+    BasicTextureEvaluator, const MaterialEvalContext &ctx,
+    SampledWavelengths &lambda) const;
+template CookTorranceBxDF CookTorranceMaterial::GetBxDF(
+    UniversalTextureEvaluator, const MaterialEvalContext &ctx,
+    SampledWavelengths &lambda) const;
+
+std::string CookTorranceMaterial::ToString() const {
+    return StringPrintf(
+        "[ CookTorranceMaterial displacement: %s normalMap: %s reflectance: %s "
+        "uRoughness: %s vRoughness: %s eta: %s remapRoughness: %s ]",
+        displacement, normalMap ? normalMap->ToString() : std::string("(nullptr)"),
+        reflectance, uRoughness, vRoughness, eta, remapRoughness);
+}
+
+CookTorranceMaterial *CookTorranceMaterial::Create(
+    const TextureParameterDictionary &parameters, Image *normalMap, const FileLoc *loc,
+    Allocator alloc) {
+    SpectrumTexture reflectance = parameters.GetSpectrumTexture(
+        "reflectance", nullptr, SpectrumType::Albedo, alloc);
+    if (!reflectance)
+        reflectance = alloc.new_object<SpectrumConstantTexture>(
+            alloc.new_object<ConstantSpectrum>(0.5f));
+
+    FloatTexture uRoughness = parameters.GetFloatTextureOrNull("uroughness", alloc);
+    FloatTexture vRoughness = parameters.GetFloatTextureOrNull("vroughness", alloc);
+    if (!uRoughness)
+        uRoughness = parameters.GetFloatTexture("roughness", 0.f, alloc);
+    if (!vRoughness)
+        vRoughness = parameters.GetFloatTexture("roughness", 0.f, alloc);
+
+    //FloatTexture thickness = parameters.GetFloatTexture("thickness", .01, alloc);
+
+    Spectrum eta;
+    if (!parameters.GetFloatArray("eta").empty())
+        eta = alloc.new_object<ConstantSpectrum>(parameters.GetFloatArray("eta")[0]);
+    else
+        eta = parameters.GetOneSpectrum("eta", nullptr, SpectrumType::Unbounded, alloc);
+    if (!eta)
+        eta = alloc.new_object<ConstantSpectrum>(1.5f);
+
+    //int maxDepth = parameters.GetOneInt("maxdepth", 10);
+    //int nSamples = parameters.GetOneInt("nsamples", 1);
+
+    //FloatTexture g = parameters.GetFloatTexture("g", 0.f, alloc);
+    SpectrumTexture albedo =
+        parameters.GetSpectrumTexture("albedo", nullptr, SpectrumType::Albedo, alloc);
+    if (!albedo)
+        albedo = alloc.new_object<SpectrumConstantTexture>(
+            alloc.new_object<ConstantSpectrum>(0.f));
+
+    FloatTexture displacement = parameters.GetFloatTextureOrNull("displacement", alloc);
+    bool remapRoughness = parameters.GetOneBool("remaproughness", true);
+
+    return alloc.new_object<CookTorranceMaterial>(
+        reflectance, uRoughness, vRoughness, albedo, eta, displacement,
+        normalMap, remapRoughness);
 }
 
 // CoatedDiffuseMaterial Method Definitions
@@ -644,7 +738,8 @@ Material Material::Create(const std::string &name,
     else if (name == "diffuse")
         material = DiffuseMaterial::Create(parameters, normalMap, loc, alloc);
     else if (name == "coateddiffuse")
-        material = CoatedDiffuseMaterial::Create(parameters, normalMap, loc, alloc);
+        //material = CoatedDiffuseMaterial::Create(parameters, normalMap, loc, alloc);
+        material = CookTorranceMaterial::Create(parameters, normalMap, loc, alloc);
     else if (name == "coatedconductor")
         material = CoatedConductorMaterial::Create(parameters, normalMap, loc, alloc);
     else if (name == "diffusetransmission")
