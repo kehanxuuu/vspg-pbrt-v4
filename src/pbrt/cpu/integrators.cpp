@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -3654,6 +3655,9 @@ std::unique_ptr<Integrator> Integrator::Create(
     if (name == "path")
         integrator =
             PathIntegrator::Create(parameters, camera, sampler, aggregate, lights, loc);
+    else if (name == "guidedpath")
+        integrator =
+            GuidedPathIntegrator::Create(parameters, camera, sampler, aggregate, lights, loc);
     else if (name == "function")
         integrator = FunctionIntegrator::Create(parameters, camera, sampler, loc);
     else if (name == "simplepath")
@@ -3690,6 +3694,209 @@ std::unique_ptr<Integrator> Integrator::Create(
 
     parameters.ReportUnused();
     return integrator;
+}
+
+// GuidedPathIntegrator Method Definitions
+GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, Camera camera, Sampler sampler,
+                               Primitive aggregate, std::vector<Light> lights,
+                               const std::string &lightSampleStrategy, bool regularize)
+    : RayIntegrator(camera, sampler, aggregate, lights),
+      maxDepth(maxDepth),
+      lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
+      regularize(regularize) {}
+
+SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+                                   Sampler sampler, ScratchBuffer &scratchBuffer,
+                                   VisibleSurface *visibleSurf) const {
+    // Declare local variables for GuidedPathIntegrator::Li()_
+    SampledSpectrum L(0.f), beta(1.f);
+    int depth = 0;
+
+    Float bsdfPDF, etaScale = 1;
+    bool specularBounce = false, anyNonSpecularBounces = false;
+    LightSampleContext prevIntrCtx;
+
+    // Sample path from camera and accumulate radiance estimate
+    while (true) {
+        // Trace ray and find closest path vertex and its BSDF
+        pstd::optional<ShapeIntersection> si = Intersect(ray);
+        // Add emitted light at intersection point or from the environment
+        if (!si) {
+            // Incorporate emission from infinite lights for escaped ray
+            for (const auto &light : infiniteLights) {
+                SampledSpectrum Le = light.Le(ray, lambda);
+                if (depth == 0 || specularBounce)
+                    L += beta * Le;
+                else {
+                    // Compute MIS weight for infinite light
+                    Float lightPDF = lightSampler.PMF(prevIntrCtx, light) *
+                                     light.PDF_Li(prevIntrCtx, ray.d, true);
+                    Float w_b = PowerHeuristic(1, bsdfPDF, 1, lightPDF);
+
+                    L += beta * w_b * Le;
+                }
+            }
+
+            break;
+        }
+        // Incorporate emission from surface hit by ray
+        SampledSpectrum Le = si->intr.Le(-ray.d, lambda);
+        if (Le) {
+            if (depth == 0 || specularBounce)
+                L += beta * Le;
+            else {
+                // Compute MIS weight for area light
+                Light areaLight(si->intr.areaLight);
+                Float lightPDF = lightSampler.PMF(prevIntrCtx, areaLight) *
+                                 areaLight.PDF_Li(prevIntrCtx, ray.d, true);
+                Float w_l = PowerHeuristic(1, bsdfPDF, 1, lightPDF);
+
+                L += beta * w_l * Le;
+            }
+        }
+
+        SurfaceInteraction &isect = si->intr;
+        // Get BSDF and skip over medium boundaries
+        BSDF bsdf = isect.GetBSDF(ray, lambda, camera, scratchBuffer, sampler);
+        if (!bsdf) {
+            specularBounce = true;  // disable MIS if the indirect ray hits a light
+            isect.SkipIntersection(&ray, si->tHit);
+            continue;
+        }
+
+        // Initialize _visibleSurf_ at first intersection
+        if (depth == 0 && visibleSurf) {
+            // Estimate BSDF's albedo
+            // Define sample arrays _ucRho_ and _uRho_ for reflectance estimate
+            constexpr int nRhoSamples = 16;
+            const Float ucRho[nRhoSamples] = {
+                0.75741637, 0.37870818, 0.7083487, 0.18935409, 0.9149363, 0.35417435,
+                0.5990858,  0.09467703, 0.8578725, 0.45746812, 0.686759,  0.17708716,
+                0.9674518,  0.2995429,  0.5083201, 0.047338516};
+            const Point2f uRho[nRhoSamples] = {
+                Point2f(0.855985, 0.570367), Point2f(0.381823, 0.851844),
+                Point2f(0.285328, 0.764262), Point2f(0.733380, 0.114073),
+                Point2f(0.542663, 0.344465), Point2f(0.127274, 0.414848),
+                Point2f(0.964700, 0.947162), Point2f(0.594089, 0.643463),
+                Point2f(0.095109, 0.170369), Point2f(0.825444, 0.263359),
+                Point2f(0.429467, 0.454469), Point2f(0.244460, 0.816459),
+                Point2f(0.756135, 0.731258), Point2f(0.516165, 0.152852),
+                Point2f(0.180888, 0.214174), Point2f(0.898579, 0.503897)};
+
+            SampledSpectrum albedo = bsdf.rho(isect.wo, ucRho, uRho);
+
+            *visibleSurf = VisibleSurface(isect, albedo, lambda);
+        }
+
+        // Possibly regularize the BSDF
+        if (regularize && anyNonSpecularBounces) {
+            ++regularizedBSDFs;
+            bsdf.Regularize();
+        }
+
+        ++totalBSDFs;
+
+        // End path if maximum depth reached
+        if (depth++ == maxDepth)
+            break;
+
+        // Sample direct illumination from the light sources
+        if (IsNonSpecular(bsdf.Flags())) {
+            ++totalPaths;
+            SampledSpectrum Ld = SampleLd(isect, &bsdf, lambda, sampler);
+            if (!Ld)
+                ++zeroRadiancePaths;
+            L += beta * Ld;
+        }
+
+        // Sample BSDF to get new path direction
+        Vector3f wo = -ray.d;
+        Float u = sampler.Get1D();
+        pstd::optional<BSDFSample> bs = bsdf.Sample_f(wo, u, sampler.Get2D());
+        if (!bs)
+            break;
+        // Update path state variables after surface scattering
+        beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
+        bsdfPDF = bs->pdfIsProportional ? bsdf.PDF(wo, bs->wi) : bs->pdf;
+        DCHECK(!IsInf(beta.y(lambda)));
+        specularBounce = bs->IsSpecular();
+        anyNonSpecularBounces |= !bs->IsSpecular();
+        if (bs->IsTransmission())
+            etaScale *= Sqr(bs->eta);
+        prevIntrCtx = si->intr;
+
+        ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
+
+        // Possibly terminate the path with Russian roulette
+        SampledSpectrum rrBeta = beta * etaScale;
+        if (rrBeta.MaxComponentValue() < 1 && depth > 1) {
+            Float q = std::max<Float>(0, 1 - rrBeta.MaxComponentValue());
+            if (sampler.Get1D() < q)
+                break;
+            beta /= 1 - q;
+            DCHECK(!IsInf(beta.y(lambda)));
+        }
+    }
+    pathLength << depth;
+    return L;
+}
+
+SampledSpectrum GuidedPathIntegrator::SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
+                                         SampledWavelengths &lambda,
+                                         Sampler sampler) const {
+    // Initialize _LightSampleContext_ for light sampling
+    LightSampleContext ctx(intr);
+    // Try to nudge the light sampling position to correct side of the surface
+    BxDFFlags flags = bsdf->Flags();
+    if (IsReflective(flags) && !IsTransmissive(flags))
+        ctx.pi = intr.OffsetRayOrigin(intr.wo);
+    else if (IsTransmissive(flags) && !IsReflective(flags))
+        ctx.pi = intr.OffsetRayOrigin(-intr.wo);
+
+    // Choose a light source for the direct lighting calculation
+    Float u = sampler.Get1D();
+    pstd::optional<SampledLight> sampledLight = lightSampler.Sample(ctx, u);
+    Point2f uLight = sampler.Get2D();
+    if (!sampledLight)
+        return {};
+
+    // Sample a point on the light source for direct lighting
+    Light light = sampledLight->light;
+    DCHECK(light && sampledLight->p > 0);
+    pstd::optional<LightLiSample> ls = light.SampleLi(ctx, uLight, lambda, true);
+    if (!ls || !ls->L || ls->pdf == 0)
+        return {};
+
+    // Evaluate BSDF for light sample and check light visibility
+    Vector3f wo = intr.wo, wi = ls->wi;
+    SampledSpectrum f = bsdf->f(wo, wi) * AbsDot(wi, intr.shading.n);
+    if (!f || !Unoccluded(intr, ls->pLight))
+        return {};
+
+    // Return light's contribution to reflected radiance
+    Float p_l = sampledLight->p * ls->pdf;
+    if (IsDeltaLight(light.Type()))
+        return ls->L * f / p_l;
+    else {
+        Float p_b = bsdf->PDF(wo, wi);
+        Float w_l = PowerHeuristic(1, p_l, 1, p_b);
+        return w_l * ls->L * f / p_l;
+    }
+}
+
+std::string GuidedPathIntegrator::ToString() const {
+    return StringPrintf("[ GuidedPathIntegrator maxDepth: %d lightSampler: %s regularize: %s ]",
+                        maxDepth, lightSampler, regularize);
+}
+
+std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
+    const ParameterDictionary &parameters, Camera camera, Sampler sampler,
+    Primitive aggregate, std::vector<Light> lights, const FileLoc *loc) {
+    int maxDepth = parameters.GetOneInt("maxdepth", 5);
+    std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
+    bool regularize = parameters.GetOneBool("regularize", false);
+    return std::make_unique<GuidedPathIntegrator>(maxDepth, camera, sampler, aggregate, lights,
+                                            lightStrategy, regularize);
 }
 
 }  // namespace pbrt

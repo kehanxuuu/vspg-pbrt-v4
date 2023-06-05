@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -230,6 +231,38 @@ class PathIntegrator : public RayIntegrator {
                              SampledWavelengths &lambda, Sampler sampler) const;
 
     // PathIntegrator Private Members
+    int maxDepth;
+    LightSampler lightSampler;
+    bool regularize;
+};
+
+// GuidedPathIntegrator Definition
+class GuidedPathIntegrator : public RayIntegrator {
+  public:
+    // GuidedPathIntegrator Public Methods
+    GuidedPathIntegrator(int maxDepth, Camera camera, Sampler sampler, Primitive aggregate,
+                   std::vector<Light> lights,
+                   const std::string &lightSampleStrategy = "bvh",
+                   bool regularize = false);
+
+    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+                       ScratchBuffer &scratchBuffer,
+                       VisibleSurface *visibleSurface) const;
+
+    static std::unique_ptr<GuidedPathIntegrator> Create(const ParameterDictionary &parameters,
+                                                  Camera camera, Sampler sampler,
+                                                  Primitive aggregate,
+                                                  std::vector<Light> lights,
+                                                  const FileLoc *loc);
+
+    std::string ToString() const;
+
+  private:
+    // GuidedPathIntegrator Private Methods
+    SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
+                             SampledWavelengths &lambda, Sampler sampler) const;
+
+    // GuidedPathIntegrator Private Members
     int maxDepth;
     LightSampler lightSampler;
     bool regularize;
