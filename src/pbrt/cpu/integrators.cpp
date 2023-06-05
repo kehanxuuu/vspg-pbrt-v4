@@ -3765,6 +3765,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
     int depth = 0;
 
     GuidedBSDF gbsdf(guiding_field, surfaceSamplingDistribution, enableGuiding);
+    float rr_correction = 1.0f;
 
     Float bsdfPDF, etaScale = 1;
     bool specularBounce = false, anyNonSpecularBounces = false;
@@ -3891,6 +3892,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         if (!bs)
             break;
 
+        rr_correction *= bs->pdf / bs->bsdfPdf;
         // Update path state variables after surface scattering
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
         bsdfPDF = bs->pdfIsProportional ? gbsdf.PDF(wo, bs->wi) : bs->pdf;
@@ -3911,7 +3913,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         // termination probability
         Float q = 0.f;
         if (rrBeta.MaxComponentValue() < 1 && depth > minRRDepth) {
-            q = std::max<Float>(0, 1 - rrBeta.MaxComponentValue());
+            q = std::max<Float>(0, 1 - (rrBeta.MaxComponentValue() * rr_correction));
             if (sampler.Get1D() < q)
                 break;
             beta /= 1 - q;

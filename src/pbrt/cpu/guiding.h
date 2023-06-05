@@ -73,20 +73,11 @@ struct GuidedBSDF{
 
             if (sampleBSDF){
                 bs = m_bsdf->Sample_f(woRender, u, u2, mode, sampleFlags);
-                if(bs && IsNonSpecular(m_bsdf->Flags())) {
-                    //bs->eta = 1.0f;
-                    //bs->sampledRoughness = 1.0f;
-                    //if (IsNonSpecular(bsdf->Flags())) {
-                    bs->f = m_bsdf->f(woRender, bs->wi, mode);
-                    bs->pdf = m_bsdf->PDF(woRender, bs->wi);
-                    //bs->pdfIsProportional = false;
-                    //bs->flags = m_bsdf->Flags();
-                    //}
-                }
                 if(bs && useGuiding) {
                     pgl_vec3f pglwi = openpgl::cpp::Vector3(bs->wi[0], bs->wi[1], bs->wi[2]);
                     float guidedPDF = m_surfaceSamplingDistribution->PDF(pglwi);
-                    bs->pdf = ((1.0f - guidingProbability) * bs->pdf) + (guidingProbability * guidedPDF); 
+                    bs->bsdfPdf = bs->pdf;
+                    bs->pdf = ((1.0f - guidingProbability) * bs->pdf) + (guidingProbability * guidedPDF);
                 }
             } else {
                 pgl_point2f sample2D = openpgl::cpp::Point2(u2[0], u2[1]);
@@ -104,6 +95,7 @@ struct GuidedBSDF{
 
                     float pdf = ((1.0f - guidingProbability) * bsdfPDF) + (guidingProbability * guidedPDF); 
                     bs = BSDFSample(f, wiRender, pdf, flags, sampledRoughness, eta, pdfIsProportional);
+                    bs->bsdfPdf = bsdfPDF;                    
                 }
             }
             return bs;

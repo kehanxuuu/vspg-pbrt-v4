@@ -128,6 +128,7 @@ struct BSDFSample {
         : f(f),
           wi(wi),
           pdf(pdf),
+          bsdfPdf(pdf),
           flags(flags),
           sampledRoughness(sampledRoughness),
           eta(eta),
@@ -148,6 +149,7 @@ struct BSDFSample {
     SampledSpectrum f;
     Vector3f wi;
     Float pdf = 0;
+    Float bsdfPdf = 0;
     BxDFFlags flags;
     Float eta = 1;
     Float sampledRoughness = 1.0f;
