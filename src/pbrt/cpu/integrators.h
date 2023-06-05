@@ -352,6 +352,61 @@ class VolPathIntegrator : public RayIntegrator {
     bool regularize;
 };
 
+// GuidedVolPathIntegrator Definition
+class GuidedVolPathIntegrator : public RayIntegrator {
+  public:
+    // VolPathIntegrator Public Methods
+    GuidedVolPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+                      std::vector<Light> lights,
+                      const std::string &lightSampleStrategy = "bvh",
+                      bool regularize = false);
+
+    SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+                       ScratchBuffer &scratchBuffer,
+                       VisibleSurface *visibleSurface) const;
+
+    void PostProcessWave() override;
+
+    static std::unique_ptr<GuidedVolPathIntegrator> Create(
+        const ParameterDictionary &parameters, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
+        Primitive aggregate, std::vector<Light> lights, const FileLoc *loc);
+
+    std::string ToString() const;
+
+  private:
+    // GuidedVolPathIntegrator Private Methods
+    SampledSpectrum SampleLd(const Interaction &intr, const GuidedBSDF *bsdf,
+                             const GuidedPhaseFunction *phase, SampledWavelengths &lambda, Sampler sampler,
+                             SampledSpectrum inv_w_u) const;
+
+    // GuidedVolPathIntegrator Private Members
+    int maxDepth;
+    int minRRDepth;
+    bool useNEE {true};
+    LightSampler lightSampler;
+    bool regularize;
+    const RGBColorSpace *colorSpace;
+
+    // Path Guiding
+    bool enableGuiding {true};
+    bool guideSurface {true};
+    bool guideVolume {true};
+    float guideSurfaceProbability = {0.5f};
+    float guideVolumeProbability = {0.5f};
+    int guideNumTrainingWaves = {128};
+    bool guideTraining = {true};
+    float guidingInfiniteLightDistance {1e6f};
+
+    ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
+    ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>* guiding_threadSurfaceSamplingDistribution;
+    ThreadLocal<openpgl::cpp::VolumeSamplingDistribution*>* guiding_threadVolumeSamplingDistribution;
+
+    PGLFieldArguments guiding_fieldSettings;
+    openpgl::cpp::SampleStorage* guiding_sampleStorage;
+    openpgl::cpp::Field* guiding_field;
+    openpgl::cpp::Device* guiding_device;
+};
+
 // AOIntegrator Definition
 class AOIntegrator : public RayIntegrator {
   public:

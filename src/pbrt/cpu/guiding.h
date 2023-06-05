@@ -257,6 +257,232 @@ private:
     Sampler* m_sampler;
 };
 
+struct GuidedPhaseFunction{
+
+    enum PhaseGuidingType{
+        EPhaseGuideMIS = 0,
+        EPhaseGuideRIS
+    };
+
+    struct RISSample{
+        float phasePDF {0.f};
+        float guidingPDF {0.f};
+        float misPDF {0.f};
+        float incomingRadiancePDF {0.f};
+        SampledSpectrum f;
+        Vector3f wiRender;
+        float eta {1.0f};
+        float sampledRoughness{1.0f};
+        float risWeight{0.f};
+    };
+
+    GuidedPhaseFunction(Sampler* sampler, openpgl::cpp::Field* guiding_field,
+    openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution, bool enableGuiding = true){
+        m_guiding_field = guiding_field;
+        m_volumeSamplingDistribution = volumeSamplingDistribution;
+        m_enableGuiding = enableGuiding;
+        m_sampler = sampler;
+    }
+
+    bool init(const PhaseFunction* phase, const Point3f& p, const Vector3f& wo, float &rand){
+        m_phase = phase;
+        pgl_point3f pglP = openpgl::cpp::Point3(p[0], p[1], p[2]);
+        bool success = false;
+
+        if(m_volumeSamplingDistribution->Init(m_guiding_field, pglP, rand)){
+            pgl_vec3f pglWo = openpgl::cpp::Vector3(wo[0], wo[1], wo[2]);
+            Float meanCosine = m_phase->MeanCosine();
+            m_volumeSamplingDistribution->ApplySingleLobeHenyeyGreensteinProduct(pglWo,meanCosine);
+            success = true;
+        }
+
+        useGuiding = m_enableGuiding ? success : false;
+        return success;
+    }
+
+    Float p(Vector3f woRender, Vector3f wiRender) const {
+        return m_phase->p(woRender, wiRender);
+    }
+
+    pstd::optional<PhaseFunctionSample> Sample_p_MIS(
+        Vector3f woRender, Point2f u) const {
+
+        pstd::optional<PhaseFunctionSample> ps = {};
+        bool samplePhase = true;
+        if (useGuiding) {
+            if(guidingProbability > u.x) {
+                u.x /= guidingProbability;
+                samplePhase = false;
+            } else {
+                u.x -= guidingProbability;
+                u.x /= (1.0f - guidingProbability);
+                samplePhase = true;
+            }
+        }
+
+        if (samplePhase){
+            ps = m_phase->Sample_p(woRender, u);
+            if(ps && useGuiding) {
+                pgl_vec3f pglwi = openpgl::cpp::Vector3(ps->wi[0], ps->wi[1], ps->wi[2]);
+                float guidedPDF = m_volumeSamplingDistribution->PDF(pglwi);
+                ps->phasePdf = ps->pdf;
+                ps->pdf = ((1.0f - guidingProbability) * ps->pdf) + (guidingProbability * guidedPDF);
+                ps->misPdf = ps->pdf;
+            }
+        } else {
+            pgl_point2f sample2D = openpgl::cpp::Point2(u[0], u[1]);
+            pgl_vec3f pglwi;
+            float guidedPDF = m_volumeSamplingDistribution->SamplePDF(sample2D, pglwi);
+            
+            Vector3f wiRender = Vector3f(pglwi.x, pglwi.y, pglwi.z);
+            Float p = m_phase->p(woRender, wiRender);
+            Float phasePDF = m_phase->PDF(woRender, wiRender);
+            if(phasePDF > 0.f) {
+                Float meanCosine = m_phase->MeanCosine();
+                bool pdfIsProportional = false;
+
+                float pdf = ((1.0f - guidingProbability) * phasePDF) + (guidingProbability * guidedPDF); 
+                ps = PhaseFunctionSample{p, wiRender, meanCosine, pdf, phasePDF, pdf};
+            }
+        }
+        return ps;
+    }
+
+    pstd::optional<PhaseFunctionSample> Sample_p_RIS(
+        Vector3f woRender, Point2f u) const {
+
+        pstd::optional<PhaseFunctionSample> ps = {};
+/*
+        bool sampleBSDF = true;
+        if (!useGuiding) {
+            return m_phase->Sample_p(woRender, u);
+        }
+
+        const float uniformIncomingRadiancePDF = ((1.0f/(4.0f * M_PI))); 
+        RISSample risSamples[2];
+        // RIS0 - sample BSDF
+        pstd::optional<BSDFSample> bs0 = m_bsdf->Sample_f(woRender, u, u2, mode, sampleFlags);
+        if(bs0) {
+            risSamples[0].f = bs0->f;
+            risSamples[0].eta = bs0->eta;
+            risSamples[0].sampledRoughness = bs0->sampledRoughness;
+            risSamples[0].bsdfPDF = bs0->pdf;
+            risSamples[0].wiRender = bs0->wi;
+            pgl_vec3f pglwi0 = openpgl::cpp::Vector3(bs0->wi[0], bs0->wi[1], bs0->wi[2]);
+            risSamples[0].guidingPDF = m_surfaceSamplingDistribution->PDF(pglwi0);
+            risSamples[0].incomingRadiancePDF = m_surfaceSamplingDistribution->IncomingRadiancePDF(pglwi0);
+            risSamples[0].flags = bs0->flags;
+            risSamples[0].misPDF = 0.5f * (risSamples[0].bsdfPDF + risSamples[0].guidingPDF);
+        }
+        // RIS1 - sample guiding
+        Point2f sample2D1 = m_sampler->Get2D();
+        pgl_point2f pglSample1 = openpgl::cpp::Point2(sample2D1[0], sample2D1[1]);
+        pgl_vec3f pglwi1;
+        risSamples[1].guidingPDF = m_surfaceSamplingDistribution->SamplePDF(pglSample1, pglwi1);
+        risSamples[1].incomingRadiancePDF = m_surfaceSamplingDistribution->IncomingRadiancePDF(pglwi1);
+        Vector3f wiRender = Vector3f(pglwi1.x, pglwi1.y, pglwi1.z);
+        risSamples[1].f = m_bsdf->f(woRender, wiRender, mode);
+        risSamples[1].eta = m_bsdf->GetEta();
+        risSamples[1].sampledRoughness = m_bsdf->GetRoughness();
+        risSamples[1].bsdfPDF = m_bsdf->PDF(woRender, wiRender);
+        risSamples[1].wiRender = wiRender;
+        risSamples[1].flags = m_bsdf->Flags();
+        risSamples[1].misPDF = 0.5f * (risSamples[1].bsdfPDF + risSamples[1].guidingPDF);
+
+        // Calculating RIS weights
+        float sumWeightsRIS = 0.f;
+        int numSamplesRIS = 0;
+        if(risSamples[0].bsdfPDF > 0.f) {
+            risSamples[0].risWeight = (risSamples[0].bsdfPDF * ((1.0f - guidingProbability) * uniformIncomingRadiancePDF + guidingProbability * risSamples[0].incomingRadiancePDF));
+            risSamples[0].risWeight /= risSamples[0].misPDF;
+            sumWeightsRIS += risSamples[0].risWeight;
+            numSamplesRIS++;
+        }
+        
+        if(risSamples[1].bsdfPDF > 0.f) {
+            risSamples[1].risWeight = (risSamples[1].bsdfPDF * ((1.0f - guidingProbability) * uniformIncomingRadiancePDF + guidingProbability * risSamples[1].incomingRadiancePDF));
+            risSamples[1].risWeight /= risSamples[1].misPDF;
+            sumWeightsRIS += risSamples[1].risWeight;
+            numSamplesRIS++;
+        }
+
+        // Checking if there is any valid sample
+        if(numSamplesRIS == 0 || sumWeightsRIS <=0.f)
+        {
+            return bs;
+        }
+
+        // Selecting RIS sample
+        int idxRIS = 0;
+        float sample1DRIS = sumWeightsRIS * m_sampler->Get1D();
+        float sumRis = 0.f;
+        for(int i = 0; i < 2; i++)
+        {
+            sumRis += risSamples[i].risWeight;
+            if(sample1DRIS <= sumRis)
+            {
+                idxRIS = i;
+                break;
+            }
+        }
+        
+        // calculating pseudo/stochastic PDF for the selected sample
+        float pdf = (risSamples[idxRIS].risWeight * risSamples[idxRIS].misPDF) * (float(2)/ sumWeightsRIS);
+        
+        // PDF used for MIS with NEE (1 BSDF and 1 guiding sample)
+        float misPdf = risSamples[idxRIS].misPDF;
+        bs = BSDFSample(risSamples[idxRIS].f, risSamples[idxRIS].wiRender, pdf, risSamples[idxRIS].flags, risSamples[idxRIS].sampledRoughness, risSamples[idxRIS].eta, false);
+        bs->bsdfPdf = risSamples[idxRIS].bsdfPDF;
+        bs->misPdf = misPdf;
+*/
+        return ps;
+    }
+
+    pstd::optional<PhaseFunctionSample> Sample_p(
+        Vector3f woRender, Point2f u) const {
+
+        if(guidingType == EPhaseGuideMIS) { 
+            return Sample_p_MIS(woRender, u);
+        } else { // RIS
+            return Sample_p_RIS(woRender, u);
+        }
+    }
+
+    float PDF(Vector3f woRender, Vector3f wiRender) const {
+        
+        float phasePDF = m_phase->PDF(woRender, wiRender); 
+        if (useGuiding){
+            float pdf = 0.f;
+            pgl_vec3f pglwi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
+            float guidedPDF = m_volumeSamplingDistribution->PDF(pglwi);
+            if(guidingType == EPhaseGuideMIS) { 
+                pdf = ((1.0f - guidingProbability) * phasePDF) + (guidingProbability * guidedPDF);
+            } else { // RIS
+                pdf = (0.5f * phasePDF) + (0.5f * guidedPDF);
+            }
+            return pdf;
+        } else {
+            return phasePDF;
+        }
+    }
+
+    float MeanCosine() const {
+        return m_phase->MeanCosine();
+    }
+
+private:
+    bool m_enableGuiding = true;
+    float guidingProbability = 0.5f;
+    bool useGuiding = false;
+
+    PhaseGuidingType guidingType {EPhaseGuideMIS};
+
+    openpgl::cpp::Field* m_guiding_field;
+    openpgl::cpp::VolumeSamplingDistribution* m_volumeSamplingDistribution;
+    const PhaseFunction* m_phase;
+    Sampler* m_sampler;
+};
+
 inline openpgl::cpp::PathSegment* guiding_newSurfacePathSegment(openpgl::cpp::PathSegmentStorage* pathSegmentStorage, const RayDifferential& ray, pstd::optional<pbrt::ShapeIntersection> si)
 {
     const SurfaceInteraction &isect = si->intr;
@@ -283,6 +509,27 @@ inline openpgl::cpp::PathSegment* guiding_newSurfacePathSegment(openpgl::cpp::Pa
     return pathSegmentData;
 }
 
+inline openpgl::cpp::PathSegment* guiding_newVolumePathSegment(openpgl::cpp::PathSegmentStorage* pathSegmentStorage, const Point3f& pos, const Vector3f& wo)
+{    
+    const pgl_vec3f pglZero = openpgl::cpp::Vector3(0.0f, 0.0f, 0.0f);
+    const pgl_vec3f pglOne = openpgl::cpp::Vector3(1.0f, 1.0f, 1.0f);
+
+    pgl_point3f pglP = openpgl::cpp::Point3(pos[0], pos[1], pos[2]);
+    pgl_vec3f pglNormal = openpgl::cpp::Vector3(0, 0, 1);
+    pgl_vec3f pglWo = openpgl::cpp::Vector3(wo[0], wo[1], wo[2]);
+
+    openpgl::cpp::PathSegment* pathSegmentData = pathSegmentStorage->NextSegment();
+    openpgl::cpp::SetPosition(pathSegmentData, pglP);
+    openpgl::cpp::SetNormal(pathSegmentData, pglNormal);
+    openpgl::cpp::SetDirectionOut(pathSegmentData, pglWo);
+    openpgl::cpp::SetVolumeScatter(pathSegmentData, true);
+    openpgl::cpp::SetScatteredContribution(pathSegmentData, pglZero);
+    openpgl::cpp::SetDirectContribution(pathSegmentData, pglZero);
+    openpgl::cpp::SetTransmittanceWeight(pathSegmentData, pglOne);
+    openpgl::cpp::SetEta(pathSegmentData, 1.0);
+    return pathSegmentData;
+}
+
 inline void guiding_addScatteredDirectLight(openpgl::cpp::PathSegment* pathSegmentData, const SampledSpectrum& Ld, SampledWavelengths &lambda, const RGBColorSpace *colorSpace)
 {
     if(pathSegmentData) {
@@ -299,6 +546,15 @@ inline void guiding_addSurfaceEmission(openpgl::cpp::PathSegment* pathSegmentDat
         const pgl_vec3f pglLe = openpgl::cpp::Vector3(std::max(0.f, LeRGB.r), std::max(0.f, LeRGB.g), std::max(0.f, LeRGB.b));
         openpgl::cpp::SetDirectContribution(pathSegmentData, pglLe);
         openpgl::cpp::SetMiWeight(pathSegmentData, misWeight);
+    }
+}
+
+inline void guiding_addTransmittanceWeight(openpgl::cpp::PathSegment* pathSegmentData, const SampledSpectrum& transmittance, SampledWavelengths &lambda, const RGBColorSpace *colorSpace)
+{
+    if(pathSegmentData) {
+        const RGB transmittanceRGB = transmittance.ToRGB(lambda, *colorSpace);
+        const pgl_vec3f pglTransmittance = openpgl::cpp::Vector3(std::max(0.f, transmittanceRGB.r), std::max(0.f, transmittanceRGB.g), std::max(0.f, transmittanceRGB.b));
+        openpgl::cpp::SetTransmittanceWeight(pathSegmentData, pglTransmittance);
     }
 }
 
@@ -351,6 +607,30 @@ inline void guiding_addSurfaceData(openpgl::cpp::PathSegment* pathSegmentData, c
         openpgl::cpp::SetEta(pathSegmentData, eta);
         openpgl::cpp::SetRoughness(pathSegmentData, sampledRoughness);
         openpgl::cpp::SetRussianRouletteProbability(pathSegmentData, survivalProbability);
+    }
+}
+
+inline void guiding_addVolumeData(openpgl::cpp::PathSegment* pathSegmentData, const Float& phaseWeight, const Vector3f& wi, const Float phasePDF, const Float meanCosine)
+{
+    const pgl_vec3f pglZero = openpgl::cpp::Vector3(0.0f, 0.0f, 0.0f);
+    const pgl_vec3f pglOne = openpgl::cpp::Vector3(1.0f, 1.0f, 1.0f);
+    
+    if(pathSegmentData) {
+        float sampledRoughness = 1.0f - std::fabs(meanCosine);
+        bool is_delta = sampledRoughness < 0.001f;
+        const pgl_vec3f pglPhaseWeight = openpgl::cpp::Vector3(phaseWeight, phaseWeight, phaseWeight);
+        const pgl_vec3f pglWi = openpgl::cpp::Vector3(wi[0], wi[1], wi[2]);
+
+        openpgl::cpp::SetTransmittanceWeight(pathSegmentData, pglOne);
+        openpgl::cpp::SetVolumeScatter(pathSegmentData, true);
+        //openpgl::cpp::SetNormal(pathSegmentData, guiding_vec3f(normal));
+        openpgl::cpp::SetDirectionIn(pathSegmentData, pglWi);
+        openpgl::cpp::SetPDFDirectionIn(pathSegmentData, phasePDF);
+        openpgl::cpp::SetScatteringWeight(pathSegmentData, pglPhaseWeight);
+        openpgl::cpp::SetIsDelta(pathSegmentData, is_delta);
+        openpgl::cpp::SetEta(pathSegmentData, 1.0f);
+        openpgl::cpp::SetRoughness(pathSegmentData, sampledRoughness);
+        openpgl::cpp::SetRussianRouletteProbability(pathSegmentData, 1.0f);
     }
 }
 
