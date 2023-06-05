@@ -3716,7 +3716,10 @@ GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool us
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
       regularize(regularize) {
         guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
-        pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_VMM);
+        //pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_VMM);
+        pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
+        //pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_QUADTREE);
+
         //((PGLKDTreeArguments*)guiding_fieldSettings.spatialSturctureArguments)->knnLookup = false;
         guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldSettings);
         guiding_sampleStorage = new openpgl::cpp::SampleStorage();
@@ -3764,10 +3767,10 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
     SampledSpectrum bsdfWeight(1.f);
     int depth = 0;
 
-    GuidedBSDF gbsdf(guiding_field, surfaceSamplingDistribution, enableGuiding);
+    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, enableGuiding);
     float rr_correction = 1.0f;
 
-    Float bsdfPDF, etaScale = 1;
+    Float misPDF, etaScale = 1;
     bool specularBounce = false, anyNonSpecularBounces = false;
     LightSampleContext prevIntrCtx;
     
@@ -3789,7 +3792,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
                     // Compute MIS weight for infinite light
                     Float lightPDF = lightSampler.PMF(prevIntrCtx, light) *
                                      light.PDF_Li(prevIntrCtx, ray.d, true);
-                    Float w_b = useNEE ? PowerHeuristic(1, bsdfPDF, 1, lightPDF) : 1.0f;
+                    Float w_b = useNEE ? PowerHeuristic(1, misPDF, 1, lightPDF) : 1.0f;
 
                     L += beta * w_b * Le;
                     guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, w_b, lambda, colorSpace);
@@ -3810,7 +3813,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
                 Light areaLight(si->intr.areaLight);
                 Float lightPDF = lightSampler.PMF(prevIntrCtx, areaLight) *
                                  areaLight.PDF_Li(prevIntrCtx, ray.d, true);
-                Float w_l = useNEE ? PowerHeuristic(1, bsdfPDF, 1, lightPDF) : 1.0f;
+                Float w_l = useNEE ? PowerHeuristic(1, misPDF, 1, lightPDF) : 1.0f;
                 L += beta * w_l * Le;
                 w = w_l;
                 add_direct_contribution = true;
@@ -3888,14 +3891,14 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         // Sample BSDF to get new path direction
         Vector3f wo = -ray.d;
         Float u = sampler.Get1D();
-        pstd::optional<BSDFSample> bs = gbsdf.Sample_f(wo, u, sampler.Get2D(), sampler.Get1D());
+        pstd::optional<BSDFSample> bs = gbsdf.Sample_f(wo, u, sampler.Get2D());
         if (!bs)
             break;
 
         rr_correction *= bs->pdf / bs->bsdfPdf;
+        misPDF = bs->misPdf;
         // Update path state variables after surface scattering
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
-        bsdfPDF = bs->pdfIsProportional ? gbsdf.PDF(wo, bs->wi) : bs->pdf;
         
         bsdfWeight = bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
 
@@ -3921,7 +3924,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         }
 
         // Guiding - Add BSDF data to the current path segment
-        guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bsdfPDF, 1.0f - q, lambda, colorSpace);
+        guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, 1.0f - q, lambda, colorSpace);
     }
     pathLength << depth;
 
