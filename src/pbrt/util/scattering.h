@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -193,6 +194,11 @@ class TrowbridgeReitzDistribution {
     // time after pbrt-v4 shipped: https://github.com/mmp/pbrt-v4/issues/479.
     // therefore, we will leave it as is so that the rendered results with
     // existing pbrt-v4 scenes doesn't change unexpectedly.
+    PBRT_CPU_GPU
+    Float MinAlpha() const {
+        return std::min(alpha_x, alpha_y);
+    } 
+
     PBRT_CPU_GPU
     static Float RoughnessToAlpha(Float roughness) { return std::sqrt(roughness); }
 

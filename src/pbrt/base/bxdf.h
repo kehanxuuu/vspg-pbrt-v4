@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -122,12 +123,13 @@ struct BSDFSample {
     // BSDFSample Public Methods
     BSDFSample() = default;
     PBRT_CPU_GPU
-    BSDFSample(SampledSpectrum f, Vector3f wi, Float pdf, BxDFFlags flags, Float eta = 1,
-               bool pdfIsProportional = false)
+    BSDFSample(SampledSpectrum f, Vector3f wi, Float pdf, BxDFFlags flags, Float sampledRoughness, 
+                Float eta = 1, bool pdfIsProportional = false)
         : f(f),
           wi(wi),
           pdf(pdf),
           flags(flags),
+          sampledRoughness(sampledRoughness),
           eta(eta),
           pdfIsProportional(pdfIsProportional) {}
 
@@ -148,6 +150,7 @@ struct BSDFSample {
     Float pdf = 0;
     BxDFFlags flags;
     Float eta = 1;
+    Float sampledRoughness = 1.0f;
     bool pdfIsProportional = false;
 };
 
@@ -193,6 +196,10 @@ class BxDF
                         pstd::span<const Point2f> u2) const;
 
     PBRT_CPU_GPU inline void Regularize();
+
+    PBRT_CPU_GPU float GetEta() const;
+
+    PBRT_CPU_GPU float GetRoughness() const;
 };
 
 }  // namespace pbrt

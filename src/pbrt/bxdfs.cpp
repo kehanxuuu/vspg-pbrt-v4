@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -93,7 +94,7 @@ PBRT_CPU_GPU pstd::optional<BSDFSample> DielectricBxDF::Sample_f(
             // Sample perfect specular dielectric BRDF
             Vector3f wi(-wo.x, -wo.y, wo.z);
             SampledSpectrum fr(R / AbsCosTheta(wi));
-            return BSDFSample(fr, wi, pr / (pr + pt), BxDFFlags::SpecularReflection);
+            return BSDFSample(fr, wi, pr / (pr + pt), BxDFFlags::SpecularReflection, 0.0f);
 
         } else {
             // Sample perfect specular dielectric BTDF
@@ -110,7 +111,7 @@ PBRT_CPU_GPU pstd::optional<BSDFSample> DielectricBxDF::Sample_f(
             if (mode == TransportMode::Radiance)
                 ft /= Sqr(etap);
 
-            return BSDFSample(ft, wi, pt / (pr + pt), BxDFFlags::SpecularTransmission,
+            return BSDFSample(ft, wi, pt / (pr + pt), BxDFFlags::SpecularTransmission, 0.0f,
                               etap);
         }
 
@@ -140,7 +141,7 @@ PBRT_CPU_GPU pstd::optional<BSDFSample> DielectricBxDF::Sample_f(
             DCHECK(!IsNaN(pdf));
             SampledSpectrum f(mfDistrib.D(wm) * mfDistrib.G(wo, wi) * R /
                               (4 * CosTheta(wi) * CosTheta(wo)));
-            return BSDFSample(f, wi, pdf, BxDFFlags::GlossyReflection);
+            return BSDFSample(f, wi, pdf, BxDFFlags::GlossyReflection, mfDistrib.MinAlpha());
 
         } else {
             // Sample transmission at rough dielectric interface
@@ -164,7 +165,7 @@ PBRT_CPU_GPU pstd::optional<BSDFSample> DielectricBxDF::Sample_f(
             if (mode == TransportMode::Radiance)
                 ft /= Sqr(etap);
 
-            return BSDFSample(ft, wi, pdf, BxDFFlags::GlossyTransmission, etap);
+            return BSDFSample(ft, wi, pdf, BxDFFlags::GlossyTransmission, mfDistrib.MinAlpha(), etap);
         }
     }
 }
@@ -485,8 +486,8 @@ PBRT_CPU_GPU pstd::optional<BSDFSample> HairBxDF::Sample_f(Vector3f wo, Float uc
     }
     pdf += Mp(cosTheta_i, cosTheta_o, sinTheta_i, sinTheta_o, v[pMax]) * apPDF[pMax] *
            (1 / (2 * Pi));
-
-    return BSDFSample(f(wo, wi, mode), wi, pdf, Flags());
+    // TODO: add correct roughness
+    return BSDFSample(f(wo, wi, mode), wi, pdf, Flags(), 1.0f);
 }
 
 PBRT_CPU_GPU Float HairBxDF::PDF(Vector3f wo, Vector3f wi, TransportMode mode,
@@ -1080,8 +1081,8 @@ PBRT_CPU_GPU pstd::optional<BSDFSample> MeasuredBxDF::Sample_f(Vector3f wo, Floa
     // Handle interactions in lower hemisphere
     if (flipWi)
         wi = -wi;
-
-    return BSDFSample(fr, wi, pdf * lum_pdf, BxDFFlags::GlossyReflection);
+    // TODO: Add correct roughness for measured materials
+    return BSDFSample(fr, wi, pdf * lum_pdf, BxDFFlags::GlossyReflection, 1.0f);
 }
 
 PBRT_CPU_GPU Float MeasuredBxDF::PDF(Vector3f wo, Vector3f wi, TransportMode mode,
