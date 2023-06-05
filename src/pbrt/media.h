@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -54,11 +55,14 @@ class HGPhaseFunction {
     pstd::optional<PhaseFunctionSample> Sample_p(Vector3f wo, Point2f u) const {
         Float pdf;
         Vector3f wi = SampleHenyeyGreenstein(wo, g, u, &pdf);
-        return PhaseFunctionSample{pdf, wi, pdf};
+        return PhaseFunctionSample{pdf, wi, g, pdf, pdf, pdf};
     }
 
     PBRT_CPU_GPU
     Float PDF(Vector3f wo, Vector3f wi) const { return p(wo, wi); }
+
+    PBRT_CPU_GPU
+    Float MeanCosine() const { return g; }
 
     static const char *Name() { return "Henyey-Greenstein"; }
 
@@ -692,6 +696,11 @@ PBRT_CPU_GPU inline pstd::optional<PhaseFunctionSample> PhaseFunction::Sample_p(
 PBRT_CPU_GPU inline Float PhaseFunction::PDF(Vector3f wo, Vector3f wi) const {
     auto pdf = [&](auto ptr) { return ptr->PDF(wo, wi); };
     return Dispatch(pdf);
+}
+
+PBRT_CPU_GPU Float PhaseFunction::MeanCosine() const {
+    auto meancosine = [&](auto ptr) { return ptr->MeanCosine(); };
+    return Dispatch(meancosine);
 }
 
 PBRT_CPU_GPU inline pstd::optional<RayMajorantSegment> RayMajorantIterator::Next() {

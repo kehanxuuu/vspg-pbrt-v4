@@ -1,4 +1,5 @@
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
+// Modifications Copyright 2023 Intel Corporation.
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
@@ -21,7 +22,10 @@ namespace pbrt {
 struct PhaseFunctionSample {
     Float p;
     Vector3f wi;
+    Float meanCosine;
     Float pdf;
+    Float phasePdf;
+    Float misPdf;
 };
 
 // PhaseFunction Definition
@@ -40,6 +44,8 @@ class PhaseFunction : public TaggedPointer<HGPhaseFunction> {
                                                                      Point2f u) const;
 
     PBRT_CPU_GPU inline Float PDF(Vector3f wo, Vector3f wi) const;
+
+    PBRT_CPU_GPU inline Float MeanCosine() const;
 };
 
 class HomogeneousMedium;
