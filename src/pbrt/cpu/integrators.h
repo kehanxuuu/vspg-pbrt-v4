@@ -23,7 +23,7 @@
 #include <pbrt/util/rng.h>
 #include <pbrt/util/sampling.h>
 
-#include <openpgl/cpp/OpenPGL.h>
+#include <pbrt/cpu/guiding.h>
 
 #include <functional>
 #include <memory>
@@ -244,7 +244,7 @@ class PathIntegrator : public RayIntegrator {
 class GuidedPathIntegrator : public RayIntegrator {
   public:
     // GuidedPathIntegrator Public Methods
-    GuidedPathIntegrator(int maxDepth, Camera camera, Sampler sampler, Primitive aggregate,
+    GuidedPathIntegrator(int maxDepth, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
                    std::vector<Light> lights,
                    const std::string &lightSampleStrategy = "bvh",
                    bool regularize = false);
@@ -256,6 +256,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     void PostProcessWave() override;
 
     static std::unique_ptr<GuidedPathIntegrator> Create(const ParameterDictionary &parameters,
+                                                  const RGBColorSpace *colorSpace,
                                                   Camera camera, Sampler sampler,
                                                   Primitive aggregate,
                                                   std::vector<Light> lights,
@@ -272,7 +273,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     int maxDepth;
     LightSampler lightSampler;
     bool regularize;
-
+    const RGBColorSpace *colorSpace;
 
     // Path Guiding
 
@@ -280,6 +281,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     float guideSurfaceProbability = {0.5f};
     int guideNumTrainingWaves = {128};
     bool guideTraining = {true};
+    float guidingInfiniteLightDistance {1e6f};
 
     ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
     ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>* guiding_threadSurfaceSamplingDistribution;
