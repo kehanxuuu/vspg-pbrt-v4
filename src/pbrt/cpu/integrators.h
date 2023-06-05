@@ -23,6 +23,8 @@
 #include <pbrt/util/rng.h>
 #include <pbrt/util/sampling.h>
 
+#include <openpgl/cpp/OpenPGL.h>
+
 #include <functional>
 #include <memory>
 #include <ostream>
@@ -89,6 +91,8 @@ class ImageTileIntegrator : public Integrator {
 
     virtual void EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler sampler,
                                      ScratchBuffer &scratchBuffer) = 0;
+
+    virtual void PostProcessWave();
 
   protected:
     // ImageTileIntegrator Protected Members
@@ -249,6 +253,8 @@ class GuidedPathIntegrator : public RayIntegrator {
                        ScratchBuffer &scratchBuffer,
                        VisibleSurface *visibleSurface) const;
 
+    void PostProcessWave() override;
+
     static std::unique_ptr<GuidedPathIntegrator> Create(const ParameterDictionary &parameters,
                                                   Camera camera, Sampler sampler,
                                                   Primitive aggregate,
@@ -266,6 +272,23 @@ class GuidedPathIntegrator : public RayIntegrator {
     int maxDepth;
     LightSampler lightSampler;
     bool regularize;
+
+
+    // Path Guiding
+
+    bool guideSurface {true};
+    float guideSurfaceProbability = {0.5f};
+    int guideNumTrainingWaves = {128};
+    bool guideTraining = {true};
+
+    ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
+    ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>* guiding_threadSurfaceSamplingDistribution;
+
+    PGLFieldArguments guiding_fieldSettings;
+    openpgl::cpp::SampleStorage* guiding_sampleStorage;
+    openpgl::cpp::Field* guiding_field;
+    openpgl::cpp::Device* guiding_device;
+    //ThreadLocal<Allocator> threadPathSegmentStorage;
 };
 
 // SimpleVolPathIntegrator Definition

@@ -43,6 +43,8 @@
 
 #include <algorithm>
 
+#include <iostream>
+
 namespace pbrt {
 
 STAT_COUNTER("Integrator/Camera rays traced", nCameraRays);
@@ -62,6 +64,8 @@ std::string RandomWalkIntegrator::ToString() const {
 
 // Integrator Method Definitions
 Integrator::~Integrator() {}
+
+void ImageTileIntegrator::PostProcessWave() {}
 
 // ImageTileIntegrator Method Definitions
 void ImageTileIntegrator::Render() {
@@ -187,14 +191,17 @@ void ImageTileIntegrator::Render() {
             progress.Update((waveEnd - waveStart) * tileBounds.Area());
         });
 
+        PostProcessWave();
+
         // Update start and end wave
         waveStart = waveEnd;
         waveEnd = std::min(spp, waveEnd + nextWaveSize);
-        if (!referenceImage)
-            nextWaveSize = std::min(2 * nextWaveSize, 64);
+        //if (!referenceImage)
+        //    nextWaveSize = std::min(2 * nextWaveSize, 64);
+        nextWaveSize = 1;
         if (waveStart == spp)
             progress.Done();
-
+        //std::cout << "nextWaveSize: " << nextWaveSize << "\t spp: " << spp << "\t waveStart: " << waveStart << "\t waveEnd: " << waveEnd << std::endl;
         // Optionally write current image to disk
         if (waveStart == spp || Options->writePartialImages || referenceImage) {
             LOG_VERBOSE("Writing image with spp = %d", waveStart);
@@ -3703,13 +3710,49 @@ GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, Camera camera, Sampler 
     : RayIntegrator(camera, sampler, aggregate, lights),
       maxDepth(maxDepth),
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
-      regularize(regularize) {}
+      regularize(regularize) {
+        guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
+        pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
+        guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldSettings);
+        guiding_sampleStorage = new openpgl::cpp::SampleStorage();
+
+        std::cout << "RunningThreads: " << RunningThreads() << std::endl;
+
+        guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
+        []() { return new openpgl::cpp::PathSegmentStorage(); });
+
+        guiding_threadSurfaceSamplingDistribution = new ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>(
+        [this]() { return new openpgl::cpp::SurfaceSamplingDistribution(guiding_field); });
+
+
+      }
+
+void GuidedPathIntegrator::PostProcessWave() {
+    std::cout << "GuidedPathIntegrator::PostProcessWave()" << std::endl;
+
+    if(guideTraining) {
+        const size_t numValidSamples = guiding_sampleStorage->GetSizeSurface() + guiding_sampleStorage->GetSizeVolume();
+        if(numValidSamples > 128) {
+            guiding_field->Update(*guiding_sampleStorage);
+            if(guiding_field->GetIteration() >= guideNumTrainingWaves) {
+                guideTraining = false;
+            }
+            guiding_sampleStorage->Clear();
+        }
+    }
+
+}
 
 SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
                                    Sampler sampler, ScratchBuffer &scratchBuffer,
                                    VisibleSurface *visibleSurf) const {
+    
+    openpgl::cpp::PathSegmentStorage* pathSegmentStorage = guiding_threadPathSegmentStorage->Get();
+    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution = guiding_threadSurfaceSamplingDistribution->Get();
+
     // Declare local variables for GuidedPathIntegrator::Li()_
     SampledSpectrum L(0.f), beta(1.f);
+    SampledSpectrum bsdfWeight(1.f);
     int depth = 0;
 
     Float bsdfPDF, etaScale = 1;
@@ -3800,6 +3843,8 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         if (depth++ == maxDepth)
             break;
 
+        // Guiding - generate new path segment
+
         // Sample direct illumination from the light sources
         if (IsNonSpecular(bsdf.Flags())) {
             ++totalPaths;
@@ -3807,6 +3852,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
             if (!Ld)
                 ++zeroRadiancePaths;
             L += beta * Ld;
+            // Guiding - add scattered contribution from NEE
         }
 
         // Sample BSDF to get new path direction
@@ -3815,9 +3861,13 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         pstd::optional<BSDFSample> bs = bsdf.Sample_f(wo, u, sampler.Get2D());
         if (!bs)
             break;
+
         // Update path state variables after surface scattering
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
         bsdfPDF = bs->pdfIsProportional ? bsdf.PDF(wo, bs->wi) : bs->pdf;
+        
+        bsdfWeight = bs->f * AbsDot(bs->wi, isect.shading.n) / bsdfPDF;
+
         DCHECK(!IsInf(beta.y(lambda)));
         specularBounce = bs->IsSpecular();
         anyNonSpecularBounces |= !bs->IsSpecular();
@@ -3836,8 +3886,24 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
             beta /= 1 - q;
             DCHECK(!IsInf(beta.y(lambda)));
         }
+
+        // Guiding - Add BSDF data to the current path segment
     }
     pathLength << depth;
+
+    if (guideTraining)
+    {
+        size_t nSamples;
+        pathSegmentStorage->PrepareSamples(true, true);
+        const openpgl::cpp::SampleData* samples = pathSegmentStorage->GetSamples(nSamples);
+        guiding_sampleStorage->AddSamples(samples, nSamples);
+        pathSegmentStorage->Clear();
+    }
+    else
+    {
+        pathSegmentStorage->Clear();
+    }
+
     return L;
 }
 
