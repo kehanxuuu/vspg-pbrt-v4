@@ -3704,17 +3704,20 @@ std::unique_ptr<Integrator> Integrator::Create(
 }
 
 // GuidedPathIntegrator Method Definitions
-GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
+GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
                                Primitive aggregate, std::vector<Light> lights,
                                const std::string &lightSampleStrategy, bool regularize)
     : RayIntegrator(camera, sampler, aggregate, lights),
       maxDepth(maxDepth),
       minRRDepth(minRRDepth),
+      useNEE(useNEE),
+      enableGuiding(enableGuiding),
       colorSpace(colorSpace),
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
       regularize(regularize) {
         guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
-        pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
+        pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_VMM);
+        //((PGLKDTreeArguments*)guiding_fieldSettings.spatialSturctureArguments)->knnLookup = false;
         guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldSettings);
         guiding_sampleStorage = new openpgl::cpp::SampleStorage();
 
@@ -3756,10 +3759,12 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
 
     openpgl::cpp::PathSegment* pathSegmentData = nullptr;
 
-    // Declare local variables for GuidedPathIntegrator::Li()_
+    // Declare local variables for GuidedPathIntegrator::Li()
     SampledSpectrum L(0.f), beta(1.f);
     SampledSpectrum bsdfWeight(1.f);
     int depth = 0;
+
+    GuidedBSDF gbsdf(guiding_field, surfaceSamplingDistribution, enableGuiding);
 
     Float bsdfPDF, etaScale = 1;
     bool specularBounce = false, anyNonSpecularBounces = false;
@@ -3783,7 +3788,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
                     // Compute MIS weight for infinite light
                     Float lightPDF = lightSampler.PMF(prevIntrCtx, light) *
                                      light.PDF_Li(prevIntrCtx, ray.d, true);
-                    Float w_b = PowerHeuristic(1, bsdfPDF, 1, lightPDF);
+                    Float w_b = useNEE ? PowerHeuristic(1, bsdfPDF, 1, lightPDF) : 1.0f;
 
                     L += beta * w_b * Le;
                     guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, w_b, lambda, colorSpace);
@@ -3804,7 +3809,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
                 Light areaLight(si->intr.areaLight);
                 Float lightPDF = lightSampler.PMF(prevIntrCtx, areaLight) *
                                  areaLight.PDF_Li(prevIntrCtx, ray.d, true);
-                Float w_l = PowerHeuristic(1, bsdfPDF, 1, lightPDF);
+                Float w_l = useNEE ? PowerHeuristic(1, bsdfPDF, 1, lightPDF) : 1.0f;
                 L += beta * w_l * Le;
                 w = w_l;
                 add_direct_contribution = true;
@@ -3865,11 +3870,13 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
             break;
 
         // Guiding - Check if we can use guiding. If so intialize the guiding distribution
+        Float v = sampler.Get1D();
+        gbsdf.init(&bsdf, ray, si, v);
 
         // Sample direct illumination from the light sources
-        if (IsNonSpecular(bsdf.Flags())) {
+        if (useNEE && IsNonSpecular(bsdf.Flags())) {
             ++totalPaths;
-            SampledSpectrum Ld = SampleLd(isect, &bsdf, lambda, sampler);
+            SampledSpectrum Ld = SampleLd(isect, &gbsdf, lambda, sampler);
             if (!Ld)
                 ++zeroRadiancePaths;
             L += beta * Ld;
@@ -3880,13 +3887,13 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         // Sample BSDF to get new path direction
         Vector3f wo = -ray.d;
         Float u = sampler.Get1D();
-        pstd::optional<BSDFSample> bs = bsdf.Sample_f(wo, u, sampler.Get2D());
+        pstd::optional<BSDFSample> bs = gbsdf.Sample_f(wo, u, sampler.Get2D(), sampler.Get1D());
         if (!bs)
             break;
 
         // Update path state variables after surface scattering
         beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
-        bsdfPDF = bs->pdfIsProportional ? bsdf.PDF(wo, bs->wi) : bs->pdf;
+        bsdfPDF = bs->pdfIsProportional ? gbsdf.PDF(wo, bs->wi) : bs->pdf;
         
         bsdfWeight = bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
 
@@ -3918,6 +3925,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
 
     if (guideTraining)
     {
+        //pathSegmentStorage->ValidateSegments();
         pathSegmentStorage->PropagateSamples(guiding_sampleStorage, true, true);
         pathSegmentStorage->Clear();
     }
@@ -3928,7 +3936,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
     return L;
 }
 
-SampledSpectrum GuidedPathIntegrator::SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
+SampledSpectrum GuidedPathIntegrator::SampleLd(const SurfaceInteraction &intr, const GuidedBSDF *bsdf,
                                          SampledWavelengths &lambda,
                                          Sampler sampler) const {
     // Initialize _LightSampleContext_ for light sampling
@@ -3981,9 +3989,11 @@ std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
     Primitive aggregate, std::vector<Light> lights, const FileLoc *loc) {
     int maxDepth = parameters.GetOneInt("maxdepth", 5);
     int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
+    bool useNEE = parameters.GetOneBool("usenee", true);
+    bool enableGuiding = parameters.GetOneBool("enableguiding", true);
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);
-    return std::make_unique<GuidedPathIntegrator>(maxDepth, minRRDepth, colorSpace, camera, sampler, aggregate, lights,
+    return std::make_unique<GuidedPathIntegrator>(maxDepth, minRRDepth, useNEE, enableGuiding, colorSpace, camera, sampler, aggregate, lights,
                                             lightStrategy, regularize);
 }
 

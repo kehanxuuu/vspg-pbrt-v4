@@ -244,7 +244,7 @@ class PathIntegrator : public RayIntegrator {
 class GuidedPathIntegrator : public RayIntegrator {
   public:
     // GuidedPathIntegrator Public Methods
-    GuidedPathIntegrator(int maxDepth, int minRRDepth, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+    GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
                    std::vector<Light> lights,
                    const std::string &lightSampleStrategy = "bvh",
                    bool regularize = false);
@@ -266,18 +266,19 @@ class GuidedPathIntegrator : public RayIntegrator {
 
   private:
     // GuidedPathIntegrator Private Methods
-    SampledSpectrum SampleLd(const SurfaceInteraction &intr, const BSDF *bsdf,
+    SampledSpectrum SampleLd(const SurfaceInteraction &intr, const GuidedBSDF *bsdf,
                              SampledWavelengths &lambda, Sampler sampler) const;
 
     // GuidedPathIntegrator Private Members
     int maxDepth;
     int minRRDepth;
+    bool useNEE {true};
     LightSampler lightSampler;
     bool regularize;
     const RGBColorSpace *colorSpace;
 
     // Path Guiding
-
+    bool enableGuiding {true};
     bool guideSurface {true};
     float guideSurfaceProbability = {0.5f};
     int guideNumTrainingWaves = {128};
