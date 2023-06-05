@@ -127,3 +127,27 @@ add_subdirectory (glad)
 set_property (TARGET glfw PROPERTY FOLDER "ext")
 set_property (TARGET glad PROPERTY FOLDER "ext")
 
+###########################################################################
+# Open PGL
+
+find_package (openpgl)
+
+if (OPENPGL_FOUND)
+  message (STATUS "Found OpenPGL version ${OPENPGL_VERSION}")
+else ()
+  message (STATUS "OpenPGL not found; building it from scratch.")
+  set(BUILD_STATIC ON CACHE BOOL "" FORCE)
+  add_subdirectory (openpgl/superbuild)
+  set_property (TARGET ep_openpgl PROPERTY FOLDER "ext/openpgl")
+  
+  set (OPENPGL_INCLUDE_DIR
+    ${CMAKE_INSTALL_PREFIX}/include
+    PARENT_SCOPE
+  )
+
+  set (OPENPGL_LIBRARIES
+    openpgl
+    tbb
+    PARENT_SCOPE
+  )
+endif()

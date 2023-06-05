@@ -98,6 +98,15 @@ if (PBRT_DBG_LOGGING)
   list (APPEND PBRT_DEFINITIONS "PBRT_DBG_LOGGING")
 endif ()
 
+###########################################################################
+# path guiding (Open PGL)
+SET(PBRT_WITH_PATH_GUIDING    ON CACHE BOOL " " FORCE)
+
+if(PBRT_WITH_PATH_GUIDING)
+  ADD_DEFINITIONS (-D PBRT_WITH_PATH_GUIDING )
+  message(STATUS "OPENPGL_LIBRARIES: ${OPENPGL_LIBRARIES}")
+endif()
+
 #######################################
 ## ext
 
@@ -877,6 +886,7 @@ target_include_directories (pbrt_lib PUBLIC
   ${CMAKE_CURRENT_BINARY_DIR}
   ${GLFW_INCLUDE}
   ${GLAD_INCLUDE}
+  ${OPENPGL_INCLUDE_DIR}
 )
 
 if (PBRT_CUDA_ENABLED AND PBRT_OPTIX7_PATH)
@@ -906,7 +916,12 @@ set (ALL_PBRT_LIBS
   utf8proc
   glfw
   glad
-  OpenGL::GL)
+  OpenGL::GL
+  ${OPENPGL_LIBRARIES}
+  )
+
+link_directories(${CMAKE_INSTALL_PREFIX}/lib)
+add_dependencies(pbrt_lib ep_openpgl)
 
 if (PBRT_CUDA_ENABLED)
   set_property (TARGET pbrt_lib PROPERTY CUDA_SEPARABLE_COMPILATION ON)

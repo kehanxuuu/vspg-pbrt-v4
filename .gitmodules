@@ -36,3 +36,7 @@
 	path = src/ext/glfw
 	url = https://github.com/glfw/glfw.git
 
+[submodule "src/ext/openpgl"]
+	path = src/ext/openpgl
+	url = https://github.com/OpenPathGuidingLibrary/openpgl.git
+	branch = v0.5.0
