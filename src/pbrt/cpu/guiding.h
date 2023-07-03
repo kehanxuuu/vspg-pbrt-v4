@@ -8,6 +8,11 @@
 #include <pbrt/interaction.h>
 #include <openpgl/cpp/OpenPGL.h>
 
+#if defined(_MSC_VER)
+ // Make MS math.h define M_PI
+ #define _USE_MATH_DEFINES
+#endif
+#include <math.h>
 #include <iostream>
 
 namespace pbrt {
