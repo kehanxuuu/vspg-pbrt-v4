@@ -23,7 +23,9 @@
 #include <pbrt/util/rng.h>
 #include <pbrt/util/sampling.h>
 
+#ifdef PBRT_WITH_PATH_GUIDING
 #include <pbrt/cpu/guiding.h>
+#endif
 
 #include <functional>
 #include <memory>
@@ -240,6 +242,7 @@ class PathIntegrator : public RayIntegrator {
     bool regularize;
 };
 
+#ifdef PBRT_WITH_PATH_GUIDING
 // GuidedPathIntegrator Definition
 class GuidedPathIntegrator : public RayIntegrator {
   public:
@@ -294,6 +297,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     openpgl::cpp::Device* guiding_device;
     //ThreadLocal<Allocator> threadPathSegmentStorage;
 };
+#endif
 
 // SimpleVolPathIntegrator Definition
 class SimpleVolPathIntegrator : public RayIntegrator {
@@ -352,6 +356,7 @@ class VolPathIntegrator : public RayIntegrator {
     bool regularize;
 };
 
+#ifdef PBRT_WITH_PATH_GUIDING
 // GuidedVolPathIntegrator Definition
 class GuidedVolPathIntegrator : public RayIntegrator {
   public:
@@ -408,6 +413,7 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     openpgl::cpp::Field* guiding_field;
     openpgl::cpp::Device* guiding_device;
 };
+#endif
 
 // AOIntegrator Definition
 class AOIntegrator : public RayIntegrator {

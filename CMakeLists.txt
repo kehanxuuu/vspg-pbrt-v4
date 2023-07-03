@@ -100,7 +100,7 @@ endif ()
 
 ###########################################################################
 # path guiding (Open PGL)
-SET(PBRT_WITH_PATH_GUIDING    ON CACHE BOOL " " FORCE)
+option(PBRT_WITH_PATH_GUIDING "Build PBRT with path guiding (Open PGL) support." ON)
 
 if(PBRT_WITH_PATH_GUIDING)
   ADD_DEFINITIONS (-D PBRT_WITH_PATH_GUIDING )
@@ -921,7 +921,9 @@ set (ALL_PBRT_LIBS
   )
 
 link_directories(${CMAKE_INSTALL_PREFIX}/lib)
-add_dependencies(pbrt_lib ep_openpgl)
+if(PBRT_WITH_PATH_GUIDING)
+  add_dependencies(pbrt_lib ep_openpgl)
+endif()
 
 if (PBRT_CUDA_ENABLED)
   set_property (TARGET pbrt_lib PROPERTY CUDA_SEPARABLE_COMPILATION ON)

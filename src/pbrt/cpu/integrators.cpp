@@ -3662,9 +3662,11 @@ std::unique_ptr<Integrator> Integrator::Create(
     if (name == "path")
         integrator =
             PathIntegrator::Create(parameters, camera, sampler, aggregate, lights, loc);
+#ifdef PBRT_WITH_PATH_GUIDING
     else if (name == "guidedpath")
         integrator =
             GuidedPathIntegrator::Create(parameters, colorSpace, camera, sampler, aggregate, lights, loc);
+#endif
     else if (name == "function")
         integrator = FunctionIntegrator::Create(parameters, camera, sampler, loc);
     else if (name == "simplepath")
@@ -3679,9 +3681,11 @@ std::unique_ptr<Integrator> Integrator::Create(
     else if (name == "volpath")
         integrator = VolPathIntegrator::Create(parameters, camera, sampler, aggregate,
                                                lights, loc);
+#ifdef PBRT_WITH_PATH_GUIDING
     else if (name == "guidedvolpath")
         integrator =
             GuidedVolPathIntegrator::Create(parameters, colorSpace, camera, sampler, aggregate, lights, loc);
+#endif
     else if (name == "bdpt")
         integrator =
             BDPTIntegrator::Create(parameters, camera, sampler, aggregate, lights, loc);
@@ -3706,6 +3710,7 @@ std::unique_ptr<Integrator> Integrator::Create(
     return integrator;
 }
 
+#ifdef PBRT_WITH_PATH_GUIDING
 // GuidedPathIntegrator Method Definitions
 GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
                                Primitive aggregate, std::vector<Light> lights,
@@ -4626,6 +4631,6 @@ std::unique_ptr<GuidedVolPathIntegrator> GuidedVolPathIntegrator::Create(
     return std::make_unique<GuidedVolPathIntegrator>(maxDepth, minRRDepth, useNEE, guideSurface, guideVolume, surfaceGuidingType, volumeGuidingType, colorSpace, camera, sampler, aggregate,
                                                lights, lightStrategy, regularize);
 }
-
+#endif
 
 }  // namespace pbrt
