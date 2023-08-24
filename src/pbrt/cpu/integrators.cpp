@@ -87,7 +87,6 @@ void ImageTileIntegrator::Render() {
         tileSampler.StartPixelSample(pPixel, sampleIndex);
 
         EvaluatePixelSample(pPixel, sampleIndex, tileSampler, scratchBuffer);
-
         return;
     }
 
@@ -4179,13 +4178,13 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
 
                             Float v = sampler.Get1D();
                             gphase.init(&intr.phase, p, ray.d, v);
+                            if(useNEE){
+                                SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, lambda, sampler, r_u);
+                                L += beta * Ld;
 
-                            SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, lambda, sampler, r_u);
-                            L += beta * Ld;
-
-                            // Guiding - add scattered contribution from NEE
-                            guiding_addScatteredDirectLight(pathSegmentData, Ld, lambda, colorSpace);
-
+                                // Guiding - add scattered contribution from NEE
+                                guiding_addScatteredDirectLight(pathSegmentData, Ld, lambda, colorSpace);
+                            }
                             // Sample new direction at real-scattering event
                             Point2f u = sampler.Get2D();
                             pstd::optional<PhaseFunctionSample> ps =
@@ -4253,7 +4252,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                         Float lightPDF = lightSampler.PMF(prevIntrContext, light) *
                                     light.PDF_Li(prevIntrContext, ray.d, true);
                         r_l *= lightPDF;
-                        Float w_b = 1.0f / (r_u + r_l).Average();
+                        Float w_b = useNEE ? 1.0f / (r_u + r_l).Average() : 1.f;
                         L += beta * w_b * Le;                       
                         guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, w_b, lambda, colorSpace);
                     }
@@ -4277,7 +4276,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                 Float lightPDF = lightSampler.PMF(prevIntrContext, areaLight) *
                             areaLight.PDF_Li(prevIntrContext, ray.d, true);
                 r_l *= lightPDF;
-                Float w_l = 1.0f / (r_u + r_l).Average();
+                Float w_l = useNEE ? 1.0f / (r_u + r_l).Average() : 1.0f;
                 L += beta * w_l * Le;
                 
                 w = w_l;
