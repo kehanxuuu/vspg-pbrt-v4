@@ -78,115 +78,69 @@ std::string LayeredBxDF<TopBxDF, BottomBxDF, twoSided>::ToString() const {
 pstd::optional<BSDFSample> CookTorranceBxDF::Sample_f(
     Vector3f wo, Float uc, Point2f u, TransportMode mode,
     BxDFReflTransFlags sampleFlags) const {
-    /*if (eta == 1 || mfDistrib.EffectivelySmooth()) {
-        // Sample perfect specular dielectric BSDF
-        Float R = FrDielectric(CosTheta(wo), eta), T = 1 - R;
-        // Compute probabilities _pr_ and _pt_ for sampling reflection and transmission
-        Float pr = R, pt = T;
-        if (!(sampleFlags & BxDFReflTransFlags::Reflection))
-            pr = 0;
-        if (!(sampleFlags & BxDFReflTransFlags::Transmission))
-            pt = 0;
-        if (pr == 0 && pt == 0)
-            return {};
+    // Compute probabilities _pr_ and _pt_ for sampling glossy and diffuse
+    //Float pr = 0.5;//FrDielectric(Dot(wo, Vector3f(0,0,1)), eta);
+    Vector3f sn = wo.z > 0? Vector3f(0,0,1) : Vector3f(0,0,-1);
+    Float pr = FrDielectric(Dot(wo, sn), eta);
+    Float pt = 1.f - pr;
 
-        if (uc < pr / (pr + pt)) {
-            // Sample perfect specular dielectric BRDF
-            Vector3f wi(-wo.x, -wo.y, wo.z);
-            SampledSpectrum fr(R / AbsCosTheta(wi));
-            return BSDFSample(fr, wi, pr / (pr + pt), BxDFFlags::SpecularReflection, 0.0f);
+    Float pdf;
+    if (uc < pr / (pr + pt)) {
 
-        } else {
-            // Sample perfect specular dielectric BTDF
-            // Compute ray direction for specular transmission
-            Vector3f wi;
-            Float etap;
-            bool valid = Refract(wo, Normal3f(0, 0, 1), eta, &etap, &wi);
-            CHECK_RARE(1e-5f, !valid);
-            if (!valid)
-                return {};
-
-            SampledSpectrum ft(T / AbsCosTheta(wi));
-            // Account for non-symmetry with transmission to different medium
-            if (mode == TransportMode::Radiance)
-                ft /= Sqr(etap);
-
-            return BSDFSample(ft, wi, pt / (pr + pt), BxDFFlags::SpecularTransmission, 0.0f,
-                              etap);
-        }
-
-    } else */{
-        // Sample rough dielectric BSDF
         Vector3f wm = mfDistrib.Sample_wm(wo, u);
+        Float R = FrDielectric(AbsDot(wo, wm), eta);
+        Float T = 1 - R;
+
+        // Sample reflection at rough dielectric interface
+        Vector3f wi = Reflect(wo, wm);
+        if (!SameHemisphere(wo, wi))
+            return {};
+        // Compute PDF of rough dielectric reflection
+        pdf = mfDistrib.PDF(wo, wm) / (4 * AbsDot(wo, wm)) * pr / (pr + pt);
+        pdf += CosineHemispherePDF(AbsCosTheta(wi)) * (pt / (pr + pt));
+        DCHECK(!IsNaN(pdf));
+        SampledSpectrum f(mfDistrib.D(wm) * mfDistrib.G(wo, wi) * R /
+                            (4 * CosTheta(wi) * CosTheta(wo)));
+        f += (this->R * InvPi) * T;
+        return BSDFSample(f, wi, pdf, BxDFFlags::GlossyReflection | BxDFFlags::DiffuseReflection, mfDistrib.MinAlpha());
+
+    } else {
+
+        Vector3f wi = SampleCosineHemisphere(u);
+        if (wo.z < 0)
+            wi.z *= -1;
+        Vector3f wm = wi + wo;
+        CHECK_RARE(1e-5f, LengthSquared(wm) == 0);
+        wm = Normalize(wm);
         Float R = FrDielectric(Dot(wo, wm), eta);
         Float T = 1 - R;
-        // Compute probabilities _pr_ and _pt_ for sampling reflection and transmission
-        Float pr = R, pt = T;
-        if (!(sampleFlags & BxDFReflTransFlags::Reflection))
-            pr = 0;
-        if (!(sampleFlags & BxDFReflTransFlags::Transmission))
-            pt = 0;
-        if (pr == 0 && pt == 0)
-            return {};
+        Float pdf = CosineHemispherePDF(AbsCosTheta(wi)) * (pt / (pr + pt));
+        pdf += mfDistrib.PDF(wo, wm) / (4 * AbsDot(wo, wm)) * pr / (pr + pt);
 
-        Float pdf;
-        if (uc < pr / (pr + pt)) {
-            // Sample reflection at rough dielectric interface
-            Vector3f wi = Reflect(wo, wm);
-            if (!SameHemisphere(wo, wi))
-                return {};
-            // Compute PDF of rough dielectric reflection
-            pdf = mfDistrib.PDF(wo, wm) / (4 * AbsDot(wo, wm)) * pr / (pr + pt);
-            pdf += CosineHemispherePDF(AbsCosTheta(wi)) * (pt / (pr + pt));
-            DCHECK(!IsNaN(pdf));
-            SampledSpectrum f(mfDistrib.D(wm) * mfDistrib.G(wo, wi) * R /
-                              (4 * CosTheta(wi) * CosTheta(wo)));
-            f += (this->R * InvPi) * T;
-            return BSDFSample(f, wi, pdf, BxDFFlags::GlossyReflection | BxDFFlags::DiffuseReflection, mfDistrib.MinAlpha());
-
-        } else {
-
-            Vector3f wi = SampleCosineHemisphere(u);
-            if (wo.z < 0)
-                wi.z *= -1;
-            wm = wi + wo;
-            CHECK_RARE(1e-5f, LengthSquared(wm) == 0);
-            wm = Normalize(wm);
-            Float pdf = CosineHemispherePDF(AbsCosTheta(wi)) * (pt / (pr + pt));
-            pdf += mfDistrib.PDF(wo, wm) / (4 * AbsDot(wo, wm)) * pr / (pr + pt);
-
-            SampledSpectrum f(mfDistrib.D(wm) * mfDistrib.G(wo, wi) * R /
-                              (4 * CosTheta(wi) * CosTheta(wo)));
-            f += (this->R * InvPi) * T;
-            return BSDFSample(f, wi, pdf, BxDFFlags::GlossyReflection | BxDFFlags::DiffuseReflection, mfDistrib.MinAlpha());
-        }
+        SampledSpectrum f(mfDistrib.D(wm) * mfDistrib.G(wo, wi) * R /
+                            (4 * CosTheta(wi) * CosTheta(wo)));
+        f += (this->R * InvPi) * T;
+        return BSDFSample(f, wi, pdf, BxDFFlags::GlossyReflection | BxDFFlags::DiffuseReflection, mfDistrib.MinAlpha());
     }
 }
 
 SampledSpectrum CookTorranceBxDF::f(Vector3f wo, Vector3f wi, TransportMode mode) const {
     if (!SameHemisphere(wo, wi))
-            return SampledSpectrum(0.f);
+        return {};
     
     //if (eta == 1 || mfDistrib.EffectivelySmooth())
     //    return SampledSpectrum(0.f);
     // Evaluate rough dielectric BSDF
     // Compute generalized half vector _wm_
     Float cosTheta_o = CosTheta(wo), cosTheta_i = CosTheta(wi);
-    //bool reflect = cosTheta_i * cosTheta_o > 0;
-    //if (!reflect)
-    //    etap = cosTheta_o > 0 ? eta : (1 / eta);
+
     Vector3f wm = wi + wo;
     CHECK_RARE(1e-5f, LengthSquared(wm) == 0);
     if (cosTheta_i == 0 || cosTheta_o == 0 || LengthSquared(wm) == 0)
         return {};
-    wm = FaceForward(Normalize(wm), Normal3f(0, 0, 1));
-
-    // Discard backfacing microfacets
-    if (Dot(wm, wi) * cosTheta_i < 0 || Dot(wm, wo) * cosTheta_o < 0)
-        return {};
+    wm = Normalize(wm);
 
     Float F = FrDielectric(Dot(wo, wm), eta);
-
     // Compute reflection at rough dielectric interface
     SampledSpectrum f = SampledSpectrum(mfDistrib.D(wm) * mfDistrib.G(wo, wi) * F /
                             std::abs(4 * cosTheta_i * cosTheta_o));
@@ -197,25 +151,29 @@ SampledSpectrum CookTorranceBxDF::f(Vector3f wo, Vector3f wi, TransportMode mode
 Float CookTorranceBxDF::PDF(Vector3f wo, Vector3f wi, TransportMode mode,
                           BxDFReflTransFlags sampleFlags) const {
     if (!(sampleFlags & BxDFReflTransFlags::Reflection) || !SameHemisphere(wo, wi))
-        return 0;
+        return 0.f;
     
-    if (eta == 1 || mfDistrib.EffectivelySmooth())
-        return 0;
+    //if (eta == 1 || mfDistrib.EffectivelySmooth())
+    //    return 0.f;
+    
     // Evaluate sampling PDF of rough dielectric BSDF
     // Compute generalized half vector _wm_
     Float cosTheta_o = CosTheta(wo), cosTheta_i = CosTheta(wi);
     Vector3f wm = wi + wo;
     CHECK_RARE(1e-5f, LengthSquared(wm) == 0);
     if (cosTheta_i == 0 || cosTheta_o == 0 || LengthSquared(wm) == 0)
-        return {};
-    wm = FaceForward(Normalize(wm), Normal3f(0, 0, 1));
+        return 0.f;
+    wm = Normalize(wm);
 
     // Determine Fresnel reflectance of rough dielectric boundary
     Float R = FrDielectric(Dot(wo, wm), eta);
     Float T = 1 - R;
 
     // Compute probabilities _pr_ and _pt_ for sampling reflection and transmission
-    Float pr = R, pt = T;
+    //Float pr = 0.5;//FrDielectric(Dot(wo, Vector3f(0,0,1)), eta);
+    Vector3f sn = wo.z > 0? Vector3f(0,0,1) : Vector3f(0,0,-1);
+    Float pr = FrDielectric(AbsDot(wo, sn), eta);
+    Float pt = 1 -pr;
 
     // Return PDF for rough dielectric
     Float pdf =  mfDistrib.PDF(wo, wm) / (4 * AbsDot(wo, wm)) * pr / (pr + pt);
