@@ -40,12 +40,12 @@ struct GuidedBSDF{
     };
 
     GuidedBSDF(Sampler* sampler, openpgl::cpp::Field* guiding_field,
-    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideRIS){
+    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideMIS){
         m_guiding_field = guiding_field;
         m_surfaceSamplingDistribution = surfaceSamplingDistribution;
         m_enableGuiding = enableGuiding;
         m_sampler = sampler;
-        m_guidingType = EGuideMIS;
+        m_guidingType = guidingType;
     }
 
     bool init(const BSDF* bsdf, const RayDifferential& ray, pstd::optional<pbrt::ShapeIntersection> si, float &rand){
@@ -54,11 +54,18 @@ struct GuidedBSDF{
         pgl_point3f pglP = openpgl::cpp::Point3(p[0], p[1], p[2]);
         bool success = false;
 
-        if (IsNonSpecular(bsdf->Flags())) {
-            if(m_surfaceSamplingDistribution->Init(m_guiding_field, pglP, rand)){
-                Normal3f n = si->intr.shading.n;
-                pgl_point3f pglN = openpgl::cpp::Vector3(n[0], n[1], n[2]);
-                m_surfaceSamplingDistribution->ApplyCosineProduct(pglN);
+        if (IsNonSpecular(bsdf->Flags()) ) {
+            if(m_surfaceSamplingDistribution->Init(m_guiding_field, pglP, rand)){                
+                // only apply the cosine product on opaque surfaces
+                if(!IsTransmissive(bsdf->Flags())) {
+                    Normal3f n = si->intr.shading.n;
+                    // check for flipped normals
+                    if(Dot(-ray.d, si->intr.shading.n) < 0.f){
+                        n = -n;
+                    }
+                    pgl_point3f pglN = openpgl::cpp::Vector3(n[0], n[1], n[2]);
+                    m_surfaceSamplingDistribution->ApplyCosineProduct(pglN);
+                }
                 success = true;
             }
         } else {
