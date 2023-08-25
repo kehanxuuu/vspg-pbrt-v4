@@ -3513,7 +3513,6 @@ void FunctionIntegrator::Render() {
                     reportResult = false;
             }
         }
-
         ++nTakenSamples;
 
         if (isStratified) {
@@ -3711,7 +3710,7 @@ std::unique_ptr<Integrator> Integrator::Create(
 
 #ifdef PBRT_WITH_PATH_GUIDING
 // GuidedPathIntegrator Method Definitions
-GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
+GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const GuidingType surfaceGuidingType, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
                                Primitive aggregate, std::vector<Light> lights,
                                const std::string &lightSampleStrategy, bool regularize)
     : RayIntegrator(camera, sampler, aggregate, lights),
@@ -3719,9 +3718,18 @@ GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool us
       minRRDepth(minRRDepth),
       useNEE(useNEE),
       enableGuiding(enableGuiding),
+      surfaceGuidingType(surfaceGuidingType),
       colorSpace(colorSpace),
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
       regularize(regularize) {
+            std::cout<< "GuidedPathIntegrator:" <<std::endl;
+            std::cout<< "\t maxDepth = " << maxDepth << std::endl;
+            std::cout<< "\t minRRDepth = " << minRRDepth << std::endl;
+            std::cout<< "\t useNEE = " << useNEE << std::endl;
+            std::cout<< "\t enableGuiding = " << enableGuiding << std::endl;
+            std::cout<< "\t surfaceGuidingType = " << surfaceGuidingType << std::endl;
+            std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
+            std::cout<< "\t regularize = " << regularize << std::endl;
         guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
         //pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_VMM);
         pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
@@ -3775,7 +3783,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
     SampledSpectrum bsdfWeight(1.f);
     int depth = 0;
 
-    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, enableGuiding);
+    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, enableGuiding, surfaceGuidingType);
     float rr_correction = 1.0f;
 
     Float misPDF, etaScale = 1;
@@ -3869,6 +3877,10 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
             *visibleSurf = VisibleSurface(isect, albedo, lambda);
         }
 
+        // End path if maximum depth reached
+        if (depth++ == maxDepth)
+            break;
+
         // Possibly regularize the BSDF
         if (regularize && anyNonSpecularBounces) {
             ++regularizedBSDFs;
@@ -3876,10 +3888,6 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         }
 
         ++totalBSDFs;
-
-        // End path if maximum depth reached
-        if (depth++ == maxDepth)
-            break;
 
         // Guiding - Check if we can use guiding. If so intialize the guiding distribution
         Float v = sampler.Get1D();
@@ -3919,6 +3927,8 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
 
         ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
 
+        if (!beta)
+            break;
         // Possibly terminate the path with Russian roulette
         SampledSpectrum rrBeta = beta * etaScale;
         // termination probability
@@ -4004,9 +4014,11 @@ std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
     int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
     bool useNEE = parameters.GetOneBool("usenee", true);
     bool enableGuiding = parameters.GetOneBool("enableguiding", true);
+    std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
+    GuidingType surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);
-    return std::make_unique<GuidedPathIntegrator>(maxDepth, minRRDepth, useNEE, enableGuiding, colorSpace, camera, sampler, aggregate, lights,
+    return std::make_unique<GuidedPathIntegrator>(maxDepth, minRRDepth, useNEE, enableGuiding, surfaceGuidingType, colorSpace, camera, sampler, aggregate, lights,
                                             lightStrategy, regularize);
 }
 
@@ -4026,6 +4038,17 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
         colorSpace(colorSpace),
         lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
         regularize(regularize) {
+            std::cout<< "GuidedVolPathIntegrator:" <<std::endl;
+            std::cout<< "\t maxDepth = " << maxDepth << std::endl;
+            std::cout<< "\t minRRDepth = " << minRRDepth << std::endl;
+            std::cout<< "\t useNEE = " << useNEE << std::endl;
+            std::cout<< "\t surfaceGuiding = " << surfaceGuiding << std::endl;
+            std::cout<< "\t volumeGuiding = " << volumeGuiding << std::endl;
+            std::cout<< "\t surfaceGuidingType = " << surfaceGuidingType << std::endl;
+            std::cout<< "\t volumeGuidingType = " << volumeGuidingType << std::endl;
+            std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
+            std::cout<< "\t regularize = " << regularize << std::endl;
+        
             guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
             pglFieldArgumentsSetDefaults(guiding_fieldSettings,PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
             guiding_fieldSettings.deterministic = true;
@@ -4049,7 +4072,6 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
 
 
 void GuidedVolPathIntegrator::PostProcessWave() {
-
 
     std::cout << "GuidedVolPathIntegrator::PostProcessWave()" << std::endl;
 /* */
@@ -4241,21 +4263,20 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
 
         // Add emitted light at volume path vertex or from the environment
         if (!si) {
-            // Accumulate contributions from infinite light sources
+            // Incorporate emission from infinite lights for escaped ray
             for (const auto &light : infiniteLights) {
-                if (SampledSpectrum Le = light.Le(ray, lambda); Le) {
-                    if (depth == 0 || specularBounce) {
-                        L += beta * Le / r_u.Average();
-                        guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, 1.0f, lambda, colorSpace);
-                    } else {
-                        // Add infinite light contribution using both PDFs with MIS
-                        Float lightPDF = lightSampler.PMF(prevIntrContext, light) *
-                                    light.PDF_Li(prevIntrContext, ray.d, true);
-                        r_l *= lightPDF;
-                        Float w_b = useNEE ? 1.0f / (r_u + r_l).Average() : 1.f;
-                        L += beta * w_b * Le;                       
-                        guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, w_b, lambda, colorSpace);
-                    }
+                SampledSpectrum Le = light.Le(ray, lambda);
+                if (depth == 0 || specularBounce) {
+                    L += beta * Le / r_u.Average();
+                    guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, 1.0f, lambda, colorSpace);
+                } else {
+                    // Add infinite light contribution using both PDFs with MIS
+                    Float lightPDF = lightSampler.PMF(prevIntrContext, light) *
+                                light.PDF_Li(prevIntrContext, ray.d, true);
+                    r_l *= lightPDF;
+                    Float w_b = useNEE ? 1.0f / (r_u + r_l).Average() : 1.f;
+                    L += beta * w_b * Le;                       
+                    guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, w_b, lambda, colorSpace);
                 }
             }
 
@@ -4278,7 +4299,6 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                 r_l *= lightPDF;
                 Float w_l = useNEE ? 1.0f / (r_u + r_l).Average() : 1.0f;
                 L += beta * w_l * Le;
-                
                 w = w_l;
                 add_direct_contribution = true;
             }
@@ -4288,6 +4308,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
         // Get BSDF and skip over medium boundaries
         BSDF bsdf = isect.GetBSDF(ray, lambda, camera, scratchBuffer, sampler);
         if (!bsdf) {
+            specularBounce = true;  // disable MIS if the indirect ray hits a light
             isect.SkipIntersection(&ray, si->tHit);
             continue;
         }
@@ -4327,7 +4348,6 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
         // Terminate path if maximum depth reached
         if (depth++ >= maxDepth)
             break;
-            //return L;
 
         ++surfaceInteractions;
         // Possibly regularize the BSDF
@@ -4349,10 +4369,10 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
             // Guiding - add scattered contribution from NEE
             guiding_addScatteredDirectLight(pathSegmentData, Ld, lambda, colorSpace);
         }
-        prevIntrContext = LightSampleContext(isect);
 
-        // Sample BSDF to get new volumetric path direction
-        Vector3f wo = isect.wo;
+        // Sample BSDF to get new path direction
+        //Vector3f wo = isect.wo;  // Note isect.wo does an explicit Normalize step.
+        Vector3f wo = -ray.d; // Use -ray.d to be on par to GuidedPath
         Float u = sampler.Get1D();
         pstd::optional<BSDFSample> bs = gbsdf.Sample_f(wo, u, sampler.Get2D());
         if (!bs)
@@ -4366,7 +4386,6 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
         //    r_l = r_u / bsdf.PDF(wo, bs->wi);
         //else
         //    r_l = r_u / bs->pdf;
-
         r_l = r_u / bs->misPdf;
 
         bsdfWeight = bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
@@ -4380,6 +4399,8 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
         anyNonSpecularBounces |= !bs->IsSpecular();
         if (bs->IsTransmission())
             etaScale *= Sqr(bs->eta);
+        prevIntrContext = LightSampleContext(isect);
+
         ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
 
         // Account for attenuated subsurface scattering, if applicable
@@ -4456,29 +4477,21 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
         if (!beta)
             break;
         SampledSpectrum rrBeta = beta * etaScale / r_u.Average();
-        Float uRR = sampler.Get1D();
         PBRT_DBG("%s\n",
                  StringPrintf("etaScale %f -> rrBeta %s", etaScale, rrBeta).c_str());
         Float q = 0.f;
         if (rrBeta.MaxComponentValue() < 1 && depth > minRRDepth) {
             q = std::max<Float>(0, 1 - (rrBeta.MaxComponentValue() * rr_correction));
-            if (uRR < q)
+            if (sampler.Get1D() < q)
                 break;
             beta /= 1 - q;
         }
-
         // Guiding - Add BSDF data to the current path segment
         guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, 1.0f - q, lambda, colorSpace);
     }
 
     if (guideTraining)
     {
-#ifdef PATH_GUIDING_VALIDATE_PATH_SEGMENTS
-        pgl_vec3f pe_RGB = pathSegmentStorage->CalculatePixelEstimate(true);
-        const RGB LRGB(pe_RGB.x, pe_RGB.y, pe_RGB.z);// = L.ToRGB(lambda, *colorSpace);
-        const RGBIlluminantSpectrum LUSpec = RGBIlluminantSpectrum(*colorSpace, LRGB);
-        L2 = LUSpec.Sample(lambda);
-#endif
         //pathSegmentStorage->ValidateSegments();
         pathSegmentStorage->PropagateSamples(guiding_sampleStorage, true, true);
         pathSegmentStorage->Clear();
@@ -4487,7 +4500,6 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
     {
         pathSegmentStorage->Clear();
     }
-
     return L;
 }
 
