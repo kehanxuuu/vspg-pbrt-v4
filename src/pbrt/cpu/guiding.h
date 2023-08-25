@@ -15,8 +15,20 @@
 #include <math.h>
 #include <iostream>
 
+//#define GUIDING_SPECTRAL_TO_VEC3_USE_RGB
+
 namespace pbrt {
 
+inline Vector3f spectral_to_vec3(const SampledSpectrum& spec, const SampledWavelengths &lambda, const RGBColorSpace &colorSpace){
+
+#ifndef GUIDING_SPECTRAL_TO_VEC3_USE_RGB
+    const float maxSpec = std::max(std::max(std::max(spec[0], spec[1]), spec[2]), spec[3]);
+    return Vector3f(maxSpec, maxSpec, maxSpec);
+#else
+    const RGB specRGB = spec.ToRGB(lambda, colorSpace);
+    return Vector3f(specRGB[0], specRGB[1], specRGB[2]);
+#endif
+}
 
 enum GuidingType{
     EGuideMIS = 0,
@@ -88,7 +100,6 @@ struct GuidedBSDF{
         Vector3f woRender, Float u, Point2f u2,
         TransportMode mode = TransportMode::Radiance,
         BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const {
-
         pstd::optional<BSDFSample> bs = {};
         bool sampleBSDF = true;
         if (useGuiding) {
@@ -138,7 +149,6 @@ struct GuidedBSDF{
         Vector3f woRender, Float u, Point2f u2,
         TransportMode mode = TransportMode::Radiance,
         BxDFReflTransFlags sampleFlags = BxDFReflTransFlags::All) const {
-
         pstd::optional<BSDFSample> bs = {};
         bool sampleBSDF = true;
         if (!useGuiding) {
@@ -536,8 +546,8 @@ inline openpgl::cpp::PathSegment* guiding_newVolumePathSegment(openpgl::cpp::Pat
 inline void guiding_addScatteredDirectLight(openpgl::cpp::PathSegment* pathSegmentData, const SampledSpectrum& Ld, SampledWavelengths &lambda, const RGBColorSpace *colorSpace)
 {
     if(pathSegmentData) {
-        const RGB LdRGB = Ld.ToRGB(lambda, *colorSpace);
-        const pgl_vec3f pglLd = openpgl::cpp::Vector3(std::max(0.f, LdRGB.r), std::max(0.f, LdRGB.g), std::max(0.f, LdRGB.b));
+        const Vector3f LdVec3 = spectral_to_vec3(Ld, lambda, *colorSpace);
+        const pgl_vec3f pglLd = openpgl::cpp::Vector3(std::max(0.f, LdVec3.z), std::max(0.f, LdVec3.y), std::max(0.f, LdVec3.z));
         openpgl::cpp::AddScatteredContribution(pathSegmentData, pglLd);
     }
 }
@@ -545,8 +555,8 @@ inline void guiding_addScatteredDirectLight(openpgl::cpp::PathSegment* pathSegme
 inline void guiding_addSurfaceEmission(openpgl::cpp::PathSegment* pathSegmentData, const SampledSpectrum& Le, float misWeight, SampledWavelengths &lambda, const RGBColorSpace *colorSpace)
 {
     if(pathSegmentData) {
-        const RGB LeRGB = Le.ToRGB(lambda, *colorSpace);
-        const pgl_vec3f pglLe = openpgl::cpp::Vector3(std::max(0.f, LeRGB.r), std::max(0.f, LeRGB.g), std::max(0.f, LeRGB.b));
+        const Vector3f LeVec3 = spectral_to_vec3(Le, lambda, *colorSpace);
+        const pgl_vec3f pglLe = openpgl::cpp::Vector3(std::max(0.f, LeVec3.x), std::max(0.f, LeVec3.y), std::max(0.f, LeVec3.z));
         openpgl::cpp::SetDirectContribution(pathSegmentData, pglLe);
         openpgl::cpp::SetMiWeight(pathSegmentData, misWeight);
     }
@@ -555,8 +565,10 @@ inline void guiding_addSurfaceEmission(openpgl::cpp::PathSegment* pathSegmentDat
 inline void guiding_addTransmittanceWeight(openpgl::cpp::PathSegment* pathSegmentData, const SampledSpectrum& transmittance, SampledWavelengths &lambda, const RGBColorSpace *colorSpace)
 {
     if(pathSegmentData) {
-        const RGB transmittanceRGB = transmittance.ToRGB(lambda, *colorSpace);
-        const pgl_vec3f pglTransmittance = openpgl::cpp::Vector3(std::max(0.f, transmittanceRGB.r), std::max(0.f, transmittanceRGB.g), std::max(0.f, transmittanceRGB.b));
+        const Vector3f transmittanceVec3 = spectral_to_vec3(transmittance, lambda, *colorSpace);
+        const pgl_vec3f pglTransmittance = openpgl::cpp::Vector3(std::max(0.f, transmittanceVec3.x), std::max(0.f, transmittanceVec3.y), std::max(0.f, transmittanceVec3.z));
+        //std::cout << "transmittance: " << transmittance[0] << "\t" << transmittance[1] << "\t" << transmittance[2] << "\t" << transmittance[3] << std::endl;
+        //std::cout << "pglTransmittance: " << transmittanceRGB.r << "\t" << transmittanceRGB.g << "\t" << transmittanceRGB.b << std::endl;  
         openpgl::cpp::SetTransmittanceWeight(pathSegmentData, pglTransmittance);
     }
 }
@@ -568,8 +580,8 @@ inline void guiding_addInfiniteLightEmission(openpgl::cpp::PathSegmentStorage* p
     
     openpgl::cpp::PathSegment* pathSegmentData = pathSegmentStorage->NextSegment();
     if(pathSegmentData) {
-        const RGB LeRGB = Le.ToRGB(lambda, *colorSpace);
-        const pgl_vec3f pglLe = openpgl::cpp::Vector3(std::max(0.f, LeRGB.r), std::max(0.f, LeRGB.g), std::max(0.f, LeRGB.b));
+        const Vector3f LeVec3 = spectral_to_vec3(Le, lambda, *colorSpace);
+        const pgl_vec3f pglLe = openpgl::cpp::Vector3(std::max(0.f, LeVec3.z), std::max(0.f, LeVec3.y), std::max(0.f, LeVec3.z));
         
 
         const Vector3f wo = -ray.d;
@@ -596,8 +608,8 @@ inline void guiding_addSurfaceData(openpgl::cpp::PathSegment* pathSegmentData, c
     
     if(pathSegmentData) {
         bool is_delta = sampledRoughness < 0.001f;
-        const RGB bsdfWeightRGB = bsdfWeight.ToRGB(lambda, *colorSpace);
-        const pgl_vec3f pglBsdfWeight = openpgl::cpp::Vector3(std::max(0.f, bsdfWeightRGB.r), std::max(0.f, bsdfWeightRGB.g), std::max(0.f, bsdfWeightRGB.b));
+        const Vector3f bsdfWeightVec3 = spectral_to_vec3(bsdfWeight, lambda, *colorSpace);
+        const pgl_vec3f pglBsdfWeight = openpgl::cpp::Vector3(std::max(0.f, bsdfWeightVec3.x), std::max(0.f, bsdfWeightVec3.y), std::max(0.f, bsdfWeightVec3.z));
         const pgl_vec3f pglWi = openpgl::cpp::Vector3(wi[0], wi[1], wi[2]);
 
         openpgl::cpp::SetTransmittanceWeight(pathSegmentData, pglOne);
