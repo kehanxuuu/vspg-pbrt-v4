@@ -247,7 +247,7 @@ class PathIntegrator : public RayIntegrator {
 class GuidedPathIntegrator : public RayIntegrator {
   public:
     // GuidedPathIntegrator Public Methods
-    GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, GuidingType surfaceGuidingType, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+    GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const GuidingType surfaceGuidingType, const bool knnLookup, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
                    std::vector<Light> lights,
                    const std::string &lightSampleStrategy = "bvh",
                    bool regularize = false);
@@ -285,6 +285,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     bool guideSurface {true};
     GuidingType surfaceGuidingType {EGuideMIS};
     float guideSurfaceProbability = {0.5f};
+    bool knnLookup {true};
     int guideNumTrainingWaves = {128};
     bool guideTraining = {true};
     float guidingInfiniteLightDistance {1e6f};
@@ -292,7 +293,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
     ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>* guiding_threadSurfaceSamplingDistribution;
 
-    PGLFieldArguments guiding_fieldSettings;
+    openpgl::cpp::FieldConfig guiding_fieldConfig;
     openpgl::cpp::SampleStorage* guiding_sampleStorage;
     openpgl::cpp::Field* guiding_field;
     openpgl::cpp::Device* guiding_device;
@@ -409,7 +410,7 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>* guiding_threadSurfaceSamplingDistribution;
     ThreadLocal<openpgl::cpp::VolumeSamplingDistribution*>* guiding_threadVolumeSamplingDistribution;
 
-    PGLFieldArguments guiding_fieldSettings;
+    openpgl::cpp::FieldConfig guiding_fieldConfig;
     openpgl::cpp::SampleStorage* guiding_sampleStorage;
     openpgl::cpp::Field* guiding_field;
     openpgl::cpp::Device* guiding_device;

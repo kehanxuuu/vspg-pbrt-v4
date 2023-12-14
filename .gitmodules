@@ -39,4 +39,4 @@
 [submodule "src/ext/openpgl"]
 	path = src/ext/openpgl
 	url = https://github.com/OpenPathGuidingLibrary/openpgl.git
-	branch = v0.5.0
+	tag = v0.6.0

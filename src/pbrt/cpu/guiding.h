@@ -52,7 +52,7 @@ struct GuidedBSDF{
     };
 
     GuidedBSDF(Sampler* sampler, openpgl::cpp::Field* guiding_field,
-    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideMIS){
+    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideRIS){
         m_guiding_field = guiding_field;
         m_surfaceSamplingDistribution = surfaceSamplingDistribution;
         m_enableGuiding = enableGuiding;
@@ -265,6 +265,10 @@ struct GuidedBSDF{
         } else {
             return bsdfPDF;
         }
+    }
+
+    uint32_t getId() const {
+        return m_surfaceSamplingDistribution->GetId();
     }
 
 private:
@@ -568,7 +572,7 @@ inline void guiding_addTransmittanceWeight(openpgl::cpp::PathSegment* pathSegmen
         const Vector3f transmittanceVec3 = spectral_to_vec3(transmittance, lambda, *colorSpace);
         const pgl_vec3f pglTransmittance = openpgl::cpp::Vector3(std::max(0.f, transmittanceVec3.x), std::max(0.f, transmittanceVec3.y), std::max(0.f, transmittanceVec3.z));
         //std::cout << "transmittance: " << transmittance[0] << "\t" << transmittance[1] << "\t" << transmittance[2] << "\t" << transmittance[3] << std::endl;
-        //std::cout << "pglTransmittance: " << transmittanceRGB.r << "\t" << transmittanceRGB.g << "\t" << transmittanceRGB.b << std::endl;  
+        //std::cout << "pglTransmittance: " << transmittanceRGB.r << "\t" << transmittanceRGB.g << "\t" << transmittanceRGB.b << std::endl;
         openpgl::cpp::SetTransmittanceWeight(pathSegmentData, pglTransmittance);
     }
 }
