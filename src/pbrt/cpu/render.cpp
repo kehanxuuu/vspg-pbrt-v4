@@ -87,6 +87,11 @@ void RenderCPU(BasicScene &parsedScene) {
         Warning("GBufferFilm is not supported by the \"%s\" integrator. The channels "
                 "other than R, G, B will be zero.",
                 parsedScene.integrator.name);
+    if (film.Is<GuidedGBufferFilm>() && !(parsedScene.integrator.name == "guidedpath" ||
+                                parsedScene.integrator.name == "guidedvolpath"))
+    Warning("GuidedGBufferFilm is not supported by the \"%s\" integrator. The channels "
+            "other than R, G, B will be zero.",
+            parsedScene.integrator.name);
 
     bool haveSubsurface = false;
     for (pbrt::Material mtl : materials)

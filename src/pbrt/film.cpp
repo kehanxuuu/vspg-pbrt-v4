@@ -845,6 +845,209 @@ GBufferFilm *GBufferFilm::Create(const ParameterDictionary &parameters,
                                          writeFP16, alloc);
 }
 
+// GuidedGBufferFilm Method Definitions
+void GuidedGBufferFilm::AddSample(Point2i pFilm, SampledSpectrum L,
+                            const SampledWavelengths &lambda,
+                            const VisibleSurface *visibleSurface, Float weight) {
+    RGB rgb = sensor->ToSensorRGB(L, lambda);
+    Float m = std::max({rgb.r, rgb.g, rgb.b});
+    if (m > maxComponentValue)
+        rgb *= maxComponentValue / m;
+
+    Pixel &p = pixels[pFilm];
+    if (visibleSurface && *visibleSurface) {
+        p.gBufferWeightSum += weight;
+
+        if (applyInverse) {
+            p.nSum += weight * outputFromRender.ApplyInverse(visibleSurface->n,
+                                                             visibleSurface->time);
+            p.nsSum += weight * outputFromRender.ApplyInverse(visibleSurface->ns,
+                                                              visibleSurface->time);
+        } else {
+            p.nSum += weight * outputFromRender(visibleSurface->n, visibleSurface->time);
+            p.nsSum +=
+                weight * outputFromRender(visibleSurface->ns, visibleSurface->time);
+        }
+
+        p.guidingId = visibleSurface->guidingData.id;
+    }
+
+    for (int c = 0; c < 3; ++c)
+        p.rgbSum[c] += rgb[c] * weight;
+    p.weightSum += weight;
+}
+
+GuidedGBufferFilm::GuidedGBufferFilm(FilmBaseParameters p, const AnimatedTransform &outputFromRender,
+                         bool applyInverse, const RGBColorSpace *colorSpace,
+                         Float maxComponentValue, bool writeFP16, Allocator alloc)
+    : FilmBase(p),
+      outputFromRender(outputFromRender),
+      applyInverse(applyInverse),
+      pixels(pixelBounds, alloc),
+      colorSpace(colorSpace),
+      maxComponentValue(maxComponentValue),
+      writeFP16(writeFP16),
+      filterIntegral(filter.Integral()) {
+    CHECK(!pixelBounds.IsEmpty());
+    filmPixelMemory += pixelBounds.Area() * sizeof(Pixel);
+    outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
+}
+
+void GuidedGBufferFilm::AddSplat(Point2f p, SampledSpectrum v,
+                           const SampledWavelengths &lambda) {
+    // NOTE: same code as RGBFilm::AddSplat()...
+    CHECK(!v.HasNaNs());
+    RGB rgb = sensor->ToSensorRGB(v, lambda);
+    Float m = std::max({rgb.r, rgb.g, rgb.b});
+    if (m > maxComponentValue)
+        rgb *= maxComponentValue / m;
+
+    Point2f pDiscrete = p + Vector2f(0.5, 0.5);
+    Bounds2i splatBounds(Point2i(Floor(pDiscrete - filter.Radius())),
+                         Point2i(Floor(pDiscrete + filter.Radius())) + Vector2i(1, 1));
+    splatBounds = Intersect(splatBounds, pixelBounds);
+    for (Point2i pi : splatBounds) {
+        Float wt = filter.Evaluate(Point2f(p - pi - Vector2f(0.5, 0.5)));
+        if (wt != 0) {
+            Pixel &pixel = pixels[pi];
+            for (int i = 0; i < 3; ++i)
+                pixel.rgbSplat[i].Add(wt * rgb[i]);
+        }
+    }
+}
+
+void GuidedGBufferFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
+    Image image = GetImage(&metadata, splatScale);
+    LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
+    image.Write(filename, metadata);
+}
+
+Image GuidedGBufferFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
+    // Convert image to RGB and compute final pixel values
+    LOG_VERBOSE("Converting image to RGB and computing final weighted pixel values");
+    PixelFormat format = writeFP16 ? PixelFormat::Half : PixelFormat::Float;
+    Image image(format, Point2i(pixelBounds.Diagonal()),
+                {"R",
+                 "G",
+                 "B",
+                 //"N.x",
+                 //"N.y",
+                 //"N.z",
+                 //"Ns.x",
+                 //"Ns.y",
+                 //"Ns.z",
+                 "GuideId.R",
+                 "GuideId.G",
+                 "GuideId.B",});
+
+    ImageChannelDesc rgbDesc = image.GetChannelDesc({"R", "G", "B"});
+    //ImageChannelDesc normalDesc = image.GetChannelDesc({"N.x", "N.y", "N.z"});
+    //ImageChannelDesc normalShadeDesc = image.GetChannelDesc({"Ns.x", "Ns.y", "Ns.z"});
+    ImageChannelDesc guideIdRgbDesc =
+        image.GetChannelDesc({"GuideId.R", "GuideId.G", "GuideId.B"});
+
+    std::atomic<int> nClamped{0};
+    ParallelFor2D(pixelBounds, [&](Point2i p) {
+        Pixel &pixel = pixels[p];
+        RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
+        
+        RGB guideIdRgb(0.0, 0.0, 0.0);
+        if(pixel.guidingId != -1)
+        {
+            IndependentSampler sampler(3, pixel.guidingId*pixel.guidingId);
+            sampler.StartPixelSample(Point2i(0,0), 0, 0);
+            guideIdRgb = RGB(sampler.Get1D(), sampler.Get1D(), sampler.Get1D());
+        }
+
+        // Normalize pixel with weight sum
+        Float weightSum = pixel.weightSum, gBufferWeightSum = pixel.gBufferWeightSum;
+        if (weightSum != 0) {
+            rgb /= weightSum;
+        }
+
+        // Add splat value at pixel
+        for (int c = 0; c < 3; ++c)
+            rgb[c] += splatScale * pixel.rgbSplat[c] / filterIntegral;
+
+        rgb = outputRGBFromSensorRGB * rgb;
+
+        if (writeFP16 && std::max({rgb.r, rgb.g, rgb.b}) > 65504) {
+            if (rgb.r > 65504)
+                rgb.r = 65504;
+            if (rgb.g > 65504)
+                rgb.g = 65504;
+            if (rgb.b > 65504)
+                rgb.b = 65504;
+            ++nClamped;
+        }
+
+        Point2i pOffset(p.x - pixelBounds.pMin.x, p.y - pixelBounds.pMin.y);
+        image.SetChannels(pOffset, rgbDesc, {rgb[0], rgb[1], rgb[2]});
+        image.SetChannels(pOffset, guideIdRgbDesc,
+                          {guideIdRgb[0], guideIdRgb[1], guideIdRgb[2]});
+
+        //Normal3f n =
+        //    LengthSquared(pixel.nSum) > 0 ? Normalize(pixel.nSum) : Normal3f(0, 0, 0);
+        
+        //Normal3f ns =
+        //    LengthSquared(pixel.nsSum) > 0 ? Normalize(pixel.nsSum) : Normal3f(0, 0, 0);
+        //image.SetChannels(pOffset, normalDesc, {(n.x+1.0f) * 0.5f, (n.y+1.0f) * 0.5f, (n.z+1.0f) * 0.5f});
+        //image.SetChannels(pOffset, normalShadeDesc, {(ns.x+1.0f) * 0.5f, (ns.y+1.0f) * 0.5f, (ns.z+1.0f) * 0.5f});
+    });
+
+    if (nClamped.load() > 0)
+        Warning("%d pixel values clamped to maximum fp16 value.", nClamped.load());
+
+    metadata->pixelBounds = pixelBounds;
+    metadata->fullResolution = fullResolution;
+    metadata->colorSpace = colorSpace;
+
+    return image;
+}
+
+std::string GuidedGBufferFilm::ToString() const {
+    return StringPrintf("[ GuidedGBufferFilm %s outputFromRender: %s applyInverse: %s "
+                        "colorSpace: %s maxComponentValue: %f writeFP16: %s ]",
+                        BaseToString(), outputFromRender, applyInverse, *colorSpace,
+                        maxComponentValue, writeFP16);
+}
+
+GuidedGBufferFilm *GuidedGBufferFilm::Create(const ParameterDictionary &parameters,
+                                 Float exposureTime,
+                                 const CameraTransform &cameraTransform, Filter filter,
+                                 const RGBColorSpace *colorSpace, const FileLoc *loc,
+                                 Allocator alloc) {
+    Float maxComponentValue = parameters.GetOneFloat("maxcomponentvalue", Infinity);
+    bool writeFP16 = parameters.GetOneBool("savefp16", true);
+
+    PixelSensor *sensor =
+        PixelSensor::Create(parameters, colorSpace, exposureTime, loc, alloc);
+
+    FilmBaseParameters filmBaseParameters(parameters, filter, sensor, loc);
+
+    if (!HasExtension(filmBaseParameters.filename, "exr"))
+        ErrorExit(loc, "%s: EXR is the only format supported by the GuidedGBufferFilm.",
+                  filmBaseParameters.filename);
+
+    std::string coordinateSystem = parameters.GetOneString("coordinatesystem", "camera");
+    AnimatedTransform outputFromRender;
+    bool applyInverse = false;
+    if (coordinateSystem == "camera") {
+        outputFromRender = cameraTransform.RenderFromCamera();
+        applyInverse = true;
+    } else if (coordinateSystem == "world")
+        outputFromRender = AnimatedTransform(cameraTransform.WorldFromRender());
+    else
+        ErrorExit(loc,
+                  "%s: unknown coordinate system for GuidedGBufferFilm. (Expecting \"camera\" "
+                  "or \"world\".)",
+                  coordinateSystem);
+
+    return alloc.new_object<GuidedGBufferFilm>(filmBaseParameters, outputFromRender,
+                                         applyInverse, colorSpace, maxComponentValue,
+                                         writeFP16, alloc);
+}
+
 // SpectralFilm Method Definitions
 SpectralFilm::SpectralFilm(FilmBaseParameters p, Float lambdaMin, Float lambdaMax,
                            int nBuckets, const RGBColorSpace *colorSpace,
@@ -1073,6 +1276,9 @@ Film Film::Create(const std::string &name, const ParameterDictionary &parameters
                                loc, alloc);
     else if (name == "gbuffer")
         film = GBufferFilm::Create(parameters, exposureTime, cameraTransform, filter,
+                                   parameters.ColorSpace(), loc, alloc);
+    else if (name == "guidedgbuffer")
+        film = GuidedGBufferFilm::Create(parameters, exposureTime, cameraTransform, filter,
                                    parameters.ColorSpace(), loc, alloc);
     else if (name == "spectral")
         film = SpectralFilm::Create(parameters, exposureTime, filter,
