@@ -245,12 +245,29 @@ class PathIntegrator : public RayIntegrator {
 #ifdef PBRT_WITH_PATH_GUIDING
 // GuidedPathIntegrator Definition
 class GuidedPathIntegrator : public RayIntegrator {
+
+  public:
+    struct GuidingSettings {
+        bool enableGuiding {true};
+        bool guideSurface {true};
+        GuidingType surfaceGuidingType {EGuideRIS};
+        float guideSurfaceProbability {0.5f};
+        bool knnLookup {true};
+        int guideNumTrainingWaves {128};
+
+        bool storeGuidingCache {false};
+        bool loadGuidingCache {false};
+        std::string guidingCacheFileName {""};
+    };
+
   public:
     // GuidedPathIntegrator Public Methods
-    GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool enableGuiding, const GuidingType surfaceGuidingType, const bool knnLookup, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+    GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, const GuidingSettings settings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
                    std::vector<Light> lights,
                    const std::string &lightSampleStrategy = "bvh",
                    bool regularize = false);
+
+    ~GuidedPathIntegrator() override;
 
     SampledSpectrum Li(RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
@@ -281,13 +298,8 @@ class GuidedPathIntegrator : public RayIntegrator {
     const RGBColorSpace *colorSpace;
 
     // Path Guiding
-    bool enableGuiding {true};
-    bool guideSurface {true};
-    GuidingType surfaceGuidingType {EGuideMIS};
-    float guideSurfaceProbability = {0.5f};
-    bool knnLookup {true};
-    int guideNumTrainingWaves = {128};
-    bool guideTraining = {true};
+    GuidingSettings guideSettings;
+    bool guideTraining {true};
     float guidingInfiniteLightDistance {1e6f};
 
     ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
@@ -402,8 +414,8 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     float guideVolumeProbability {0.5f};
     GuidingType surfaceGuidingType {EGuideMIS};
     GuidingType volumeGuidingType {EGuideMIS};
-    int guideNumTrainingWaves = {128};
-    bool guideTraining = {true};
+    int guideNumTrainingWaves {128};
+    bool guideTraining {true};
     float guidingInfiniteLightDistance {1e6f};
 
     ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
