@@ -4050,7 +4050,7 @@ std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
 }
 
 // GuidedVolPathIntegrator Method Definitions
-GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, bool surfaceGuiding, bool volumeGuiding, const GuidingType surfaceGuidingType, const GuidingType volumeGuidingType, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, const GuidingSettings guideSettings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
                       std::vector<Light> lights,
                       const std::string &lightSampleStrategy,
                       bool regularize)
@@ -4058,10 +4058,7 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
         maxDepth(maxDepth),
         minRRDepth(minRRDepth),
         useNEE(useNEE),
-        guideSurface(surfaceGuiding),
-        guideVolume(volumeGuiding),
-        surfaceGuidingType(surfaceGuidingType),
-        volumeGuidingType(volumeGuidingType),
+        guideSettings(guideSettings),
         colorSpace(colorSpace),
         lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
         regularize(regularize) {
@@ -4069,17 +4066,29 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
             std::cout<< "\t maxDepth = " << maxDepth << std::endl;
             std::cout<< "\t minRRDepth = " << minRRDepth << std::endl;
             std::cout<< "\t useNEE = " << useNEE << std::endl;
-            std::cout<< "\t surfaceGuiding = " << surfaceGuiding << std::endl;
-            std::cout<< "\t volumeGuiding = " << volumeGuiding << std::endl;
-            std::cout<< "\t surfaceGuidingType = " << surfaceGuidingType << std::endl;
-            std::cout<< "\t volumeGuidingType = " << volumeGuidingType << std::endl;
+            std::cout<< "\t surfaceGuiding = " << guideSettings.guideSurface << std::endl;
+            std::cout<< "\t volumeGuiding = " << guideSettings.guideVolume << std::endl;
+            std::cout<< "\t surfaceGuidingType = " << guideSettings.surfaceGuidingType << std::endl;
+            std::cout<< "\t volumeGuidingType = " << guideSettings.volumeGuidingType << std::endl;
+            std::cout<< "\t loadGuidingCache = " << guideSettings.loadGuidingCache << std::endl;
+            std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl;
             std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
             std::cout<< "\t regularize = " << regularize << std::endl;
         
             guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
             guiding_fieldConfig.Init(PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
 
-            guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
+            if (guideSettings.loadGuidingCache) {
+                if(FileExists(guideSettings.guidingCacheFileName)) {
+                    std::cout<< "GuidedVolPathIntegrator: loading guiding cache = "<< guideSettings.guidingCacheFileName <<std::endl;
+                    guiding_field = new openpgl::cpp::Field(guiding_device, guideSettings.guidingCacheFileName);
+                    guideTraining = false;
+                } else {
+                    guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
+                }
+            } else {
+                guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
+            }
             guiding_sampleStorage = new openpgl::cpp::SampleStorage();
 
             guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
@@ -4097,6 +4106,14 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
             }
 
 
+GuidedVolPathIntegrator::~GuidedVolPathIntegrator() {
+    //~RayIntegrator();
+    if(guideSettings.storeGuidingCache) {
+        std::cout << "GuidedPathIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
+        guiding_field->Store(guideSettings.guidingCacheFileName);
+    }
+}
+
 void GuidedVolPathIntegrator::PostProcessWave() {
 
     std::cout << "GuidedVolPathIntegrator::PostProcessWave()" << std::endl;
@@ -4109,7 +4126,7 @@ void GuidedVolPathIntegrator::PostProcessWave() {
         //guiding_field->Store("coronabench_guiding_field_small-" +  std::to_string(guiding_field->GetIteration()) + ".gf");
         if(numValidSamples > 128) {
             guiding_field->Update(*guiding_sampleStorage);
-            if(guiding_field->GetIteration() >= guideNumTrainingWaves) {
+            if(guiding_field->GetIteration() >= guideSettings.guideNumTrainingWaves) {
                 guideTraining = false;
             }
             guiding_sampleStorage->Clear();
@@ -4136,8 +4153,8 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
     int depth = 0;
     Float etaScale = 1;
 
-    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, guideSurface, surfaceGuidingType);
-    GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, guideVolume, volumeGuidingType);
+    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, guideSettings.guideSurface, guideSettings.surfaceGuidingType);
+    GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, guideSettings.guideVolume, guideSettings.volumeGuidingType);
     float rr_correction = 1.0f;
     float misPDF = 1.0f;
 
@@ -4657,15 +4674,23 @@ std::unique_ptr<GuidedVolPathIntegrator> GuidedVolPathIntegrator::Create(
     int maxDepth = parameters.GetOneInt("maxdepth", 5);
     int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
     bool useNEE = parameters.GetOneBool("usenee", true);
-    bool guideSurface = parameters.GetOneBool("surfaceguiding", true);
-    bool guideVolume = parameters.GetOneBool("volumeguiding", true);
+    GuidingSettings settings;
+    settings.knnLookup = parameters.GetOneBool("knnlookup", true);
+    settings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
+    settings.guideVolume = parameters.GetOneBool("volumeguiding", true);
+    settings.enableGuiding = settings.guideSurface || settings.guideVolume;
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
-    GuidingType surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
+    settings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
     std::string strVolumeGuidingType = parameters.GetOneString("volumeguidingtype", "mis");
-    GuidingType volumeGuidingType = strVolumeGuidingType == "mis" ? EGuideMIS : EGuideRIS;
+    settings.volumeGuidingType = strVolumeGuidingType == "mis" ? EGuideMIS : EGuideRIS;
+
+    settings.storeGuidingCache = parameters.GetOneBool("storeGuidingCache", false);
+    settings.loadGuidingCache = parameters.GetOneBool("loadGuidingCache", false);
+    settings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
+
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);
-    return std::make_unique<GuidedVolPathIntegrator>(maxDepth, minRRDepth, useNEE, guideSurface, guideVolume, surfaceGuidingType, volumeGuidingType, colorSpace, camera, sampler, aggregate,
+    return std::make_unique<GuidedVolPathIntegrator>(maxDepth, minRRDepth, useNEE, settings, colorSpace, camera, sampler, aggregate,
                                                lights, lightStrategy, regularize);
 }
 #endif
