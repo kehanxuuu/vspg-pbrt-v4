@@ -551,7 +551,7 @@ inline void guiding_addScatteredDirectLight(openpgl::cpp::PathSegment* pathSegme
 {
     if(pathSegmentData) {
         const Vector3f LdVec3 = spectral_to_vec3(Ld, lambda, *colorSpace);
-        const pgl_vec3f pglLd = openpgl::cpp::Vector3(std::max(0.f, LdVec3.z), std::max(0.f, LdVec3.y), std::max(0.f, LdVec3.z));
+        const pgl_vec3f pglLd = openpgl::cpp::Vector3(std::max(0.f, LdVec3.x), std::max(0.f, LdVec3.y), std::max(0.f, LdVec3.z));
         openpgl::cpp::AddScatteredContribution(pathSegmentData, pglLd);
     }
 }
@@ -585,8 +585,7 @@ inline void guiding_addInfiniteLightEmission(openpgl::cpp::PathSegmentStorage* p
     openpgl::cpp::PathSegment* pathSegmentData = pathSegmentStorage->NextSegment();
     if(pathSegmentData) {
         const Vector3f LeVec3 = spectral_to_vec3(Le, lambda, *colorSpace);
-        const pgl_vec3f pglLe = openpgl::cpp::Vector3(std::max(0.f, LeVec3.z), std::max(0.f, LeVec3.y), std::max(0.f, LeVec3.z));
-        
+        const pgl_vec3f pglLe = openpgl::cpp::Vector3(std::max(0.f, LeVec3.x), std::max(0.f, LeVec3.y), std::max(0.f, LeVec3.z));
 
         const Vector3f wo = -ray.d;
         const Point3f p = ray.o + guidingInfiniteLightDistance * ray.d;
