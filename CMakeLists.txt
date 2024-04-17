@@ -107,6 +107,14 @@ if(PBRT_WITH_PATH_GUIDING)
   message(STATUS "OPENPGL_LIBRARIES: ${OPENPGL_LIBRARIES}")
 endif()
 
+###########################################################################
+# Enable RGB mode
+option(PBRT_WITH_RGB "Enable RGB rendering in favor of spectral rendering." ON)
+
+if(PBRT_WITH_RGB)
+  ADD_DEFINITIONS (-D PBRT_RGB_RENDERING )
+endif()
+
 #######################################
 ## ext
 

@@ -33,7 +33,12 @@ namespace pbrt {
 // Spectrum Constants
 constexpr Float Lambda_min = 360, Lambda_max = 830;
 
+#if !defined(PBRT_RGB_RENDERING)
 static constexpr int NSpectrumSamples = 4;
+#else
+static constexpr int NSpectrumSamples = 3;
+#endif
+
 
 static constexpr Float CIE_Y_integral = 106.856895;
 
@@ -532,9 +537,22 @@ class RGBAlbedoSpectrum {
   public:
     // RGBAlbedoSpectrum Public Methods
     PBRT_CPU_GPU
-    Float operator()(Float lambda) const { return rsp(lambda); }
+    Float operator()(Float lambda) const { 
+#if !defined(PBRT_RGB_RENDERING)
+        return rsp(lambda); 
+#else
+        // TODO: fix = first channel, max, or avg
+        return lambda;
+#endif
+    }
     PBRT_CPU_GPU
-    Float MaxValue() const { return rsp.MaxValue(); }
+    Float MaxValue() const { 
+#if !defined(PBRT_RGB_RENDERING)
+        return rsp.MaxValue(); 
+#else
+        return std::max(rgb[0], std::max(rgb[1], rgb[2])); 
+#endif
+    }
 
     PBRT_CPU_GPU
     RGBAlbedoSpectrum(const RGBColorSpace &cs, RGB rgb);
@@ -543,7 +561,11 @@ class RGBAlbedoSpectrum {
     SampledSpectrum Sample(const SampledWavelengths &lambda) const {
         SampledSpectrum s;
         for (int i = 0; i < NSpectrumSamples; ++i)
+#if !defined(PBRT_RGB_RENDERING)
             s[i] = rsp(lambda[i]);
+#else
+            s[i] = rgb[i];
+#endif
         return s;
     }
 
@@ -551,28 +573,54 @@ class RGBAlbedoSpectrum {
 
   private:
     // RGBAlbedoSpectrum Private Members
+#if !defined(PBRT_RGB_RENDERING)
     RGBSigmoidPolynomial rsp;
+#else
+    RGB rgb;
+#endif
 };
 
 class RGBUnboundedSpectrum {
   public:
     // RGBUnboundedSpectrum Public Methods
     PBRT_CPU_GPU
-    Float operator()(Float lambda) const { return scale * rsp(lambda); }
+    Float operator()(Float lambda) const { 
+#if !defined(PBRT_RGB_RENDERING)
+        return scale * rsp(lambda);
+#else
+        // TODO: fix = first channel, max, or avg
+        return lambda;
+#endif
+    }
+
     PBRT_CPU_GPU
-    Float MaxValue() const { return scale * rsp.MaxValue(); }
+    Float MaxValue() const { 
+#if !defined(PBRT_RGB_RENDERING)
+        return scale * rsp.MaxValue();
+#else
+        return std::max(rgb[0], std::max(rgb[1], rgb[2]));
+#endif
+    }
 
     PBRT_CPU_GPU
     RGBUnboundedSpectrum(const RGBColorSpace &cs, RGB rgb);
 
+#if !defined(PBRT_RGB_RENDERING)
     PBRT_CPU_GPU
     RGBUnboundedSpectrum() : rsp(0, 0, 0), scale(0) {}
+#else
+    RGBUnboundedSpectrum() : rgb(0, 0, 0) {}
+#endif
 
     PBRT_CPU_GPU
     SampledSpectrum Sample(const SampledWavelengths &lambda) const {
         SampledSpectrum s;
         for (int i = 0; i < NSpectrumSamples; ++i)
+#if !defined(PBRT_RGB_RENDERING)
             s[i] = scale * rsp(lambda[i]);
+#else
+            s[i] = rgb[i];
+#endif
         return s;
     }
 
@@ -580,8 +628,12 @@ class RGBUnboundedSpectrum {
 
   private:
     // RGBUnboundedSpectrum Private Members
+#if !defined(PBRT_RGB_RENDERING)
     Float scale = 1;
     RGBSigmoidPolynomial rsp;
+#else
+    RGB rgb;
+#endif
 };
 
 class RGBIlluminantSpectrum {
@@ -593,38 +645,61 @@ class RGBIlluminantSpectrum {
 
     PBRT_CPU_GPU
     Float operator()(Float lambda) const {
+#if !defined(PBRT_RGB_RENDERING)
         if (!illuminant)
             return 0;
         return scale * rsp(lambda) * (*illuminant)(lambda);
+#else
+        // TODO: fix = first channel, max, or avg
+        return lambda;
+#endif
     }
 
     PBRT_CPU_GPU
     Float MaxValue() const {
+#if !defined(PBRT_RGB_RENDERING)
         if (!illuminant)
             return 0;
         return scale * rsp.MaxValue() * illuminant->MaxValue();
+#else
+        return std::max(rgb[0], std::max(rgb[1], rgb[2]));
+#endif
     }
-
+#if !defined(PBRT_RGB_RENDERING)
     PBRT_CPU_GPU
     const DenselySampledSpectrum *Illuminant() const { return illuminant; }
-
+#endif
     PBRT_CPU_GPU
     SampledSpectrum Sample(const SampledWavelengths &lambda) const {
+#if !defined(PBRT_RGB_RENDERING)
         if (!illuminant)
             return SampledSpectrum(0);
+#endif
         SampledSpectrum s;
         for (int i = 0; i < NSpectrumSamples; ++i)
+#if !defined(PBRT_RGB_RENDERING)
             s[i] = scale * rsp(lambda[i]);
+#else
+            s[i] = rgb[i];
+#endif
+#if !defined(PBRT_RGB_RENDERING)
         return s * illuminant->Sample(lambda);
+#else
+        return s;
+#endif
     }
 
     std::string ToString() const;
 
   private:
     // RGBIlluminantSpectrum Private Members
+#if !defined(PBRT_RGB_RENDERING)
     Float scale;
     RGBSigmoidPolynomial rsp;
     const DenselySampledSpectrum *illuminant;
+#else
+    RGB rgb;
+#endif
 };
 
 // SampledSpectrum Inline Functions

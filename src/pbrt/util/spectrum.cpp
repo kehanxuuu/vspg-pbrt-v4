@@ -40,10 +40,14 @@ Float SpectrumToPhotometric(Spectrum s) {
     // illuminant for the sake of this calculation, and we should consider the
     // RGB separately for the purposes of target power/illuminance computation
     // in the lights themselves (but we currently don't)
+#if !defined(PBRT_RGB_RENDERING)
     if (s.Is<RGBIlluminantSpectrum>())
         s = s.Cast<RGBIlluminantSpectrum>()->Illuminant();
 
     return InnerProduct(&Spectra::Y(), s);
+#else
+    return 1.f;
+#endif
 }
 
 XYZ SpectrumToXYZ(Spectrum s) {
@@ -230,34 +234,61 @@ PBRT_CPU_GPU RGB SampledSpectrum::ToRGB(const SampledWavelengths &lambda,
 PBRT_CPU_GPU RGBAlbedoSpectrum::RGBAlbedoSpectrum(const RGBColorSpace &cs, RGB rgb) {
     DCHECK_LE(std::max({rgb.r, rgb.g, rgb.b}), 1);
     DCHECK_GE(std::min({rgb.r, rgb.g, rgb.b}), 0);
+#if !defined(PBRT_RGB_RENDERING)
     rsp = cs.ToRGBCoeffs(rgb);
+#else
+    this->rgb = rgb;
+#endif
 }
 
 PBRT_CPU_GPU RGBUnboundedSpectrum::RGBUnboundedSpectrum(const RGBColorSpace &cs, RGB rgb) {
+#if !defined(PBRT_RGB_RENDERING)
     Float m = std::max({rgb.r, rgb.g, rgb.b});
     scale = 2 * m;
     rsp = cs.ToRGBCoeffs(scale ? rgb / scale : RGB(0, 0, 0));
+#else
+    this->rgb = rgb;
+#endif
 }
 
 PBRT_CPU_GPU RGBIlluminantSpectrum::RGBIlluminantSpectrum(const RGBColorSpace &cs, RGB rgb)
+#if !defined(PBRT_RGB_RENDERING)
     : illuminant(&cs.illuminant) {
+
     Float m = std::max({rgb.r, rgb.g, rgb.b});
     scale = 2 * m;
     rsp = cs.ToRGBCoeffs(scale ? rgb / scale : RGB(0, 0, 0));
+#else
+{
+    this->rgb = rgb;
+#endif
 }
 
 std::string RGBAlbedoSpectrum::ToString() const {
+#if !defined(PBRT_RGB_RENDERING)
     return StringPrintf("[ RGBAlbedoSpectrum rsp: %s ]", rsp);
+#else
+    return StringPrintf("[ RGBAlbedoSpectrum rgb: %s ]", rgb);
+#endif
 }
 
 std::string RGBUnboundedSpectrum::ToString() const {
+#if !defined(PBRT_RGB_RENDERING)
     return StringPrintf("[ RGBUnboundedSpectrum rsp: %s ]", rsp);
+#else
+    return StringPrintf("[ RGBUnboundedSpectrum rgb: %s ]", rgb);
+#endif
 }
 
 std::string RGBIlluminantSpectrum::ToString() const {
+#if !defined(PBRT_RGB_RENDERING)
     return StringPrintf("[ RGBIlluminantSpectrum: rsp: %s scale: %f illuminant: %s ]",
                         rsp, scale,
                         illuminant ? illuminant->ToString() : std::string("(nullptr)"));
+#else
+    return StringPrintf("[ RGBIlluminantSpectrum: rgb: %s]",
+                        rgb);
+#endif
 }
 
 namespace {

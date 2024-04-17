@@ -493,7 +493,11 @@ RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
     CHECK(colorSpace);
     filmPixelMemory += pixelBounds.Area() * sizeof(Pixel);
     // Compute _outputRGBFromSensorRGB_ matrix
+#if !defined(PBRT_RGB_RENDERING)
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
+#else
+    outputRGBFromSensorRGB = SquareMatrix<3>::Diag(1.f,1.f,1.f);
+#endif
 }
 
 PBRT_CPU_GPU void RGBFilm::AddSplat(Point2f p, SampledSpectrum L, const SampledWavelengths &lambda) {
@@ -653,7 +657,11 @@ GBufferFilm::GBufferFilm(FilmBaseParameters p, const AnimatedTransform &outputFr
       filterIntegral(filter.Integral()) {
     CHECK(!pixelBounds.IsEmpty());
     filmPixelMemory += pixelBounds.Area() * sizeof(Pixel);
+#if !defined(PBRT_RGB_RENDERING)
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
+#else
+    outputRGBFromSensorRGB = SquareMatrix<3>::Diag(1.f,1.f,1.f);
+#endif
 }
 
 PBRT_CPU_GPU void GBufferFilm::AddSplat(Point2f p, SampledSpectrum v,
@@ -890,7 +898,11 @@ GuidedGBufferFilm::GuidedGBufferFilm(FilmBaseParameters p, const AnimatedTransfo
       filterIntegral(filter.Integral()) {
     CHECK(!pixelBounds.IsEmpty());
     filmPixelMemory += pixelBounds.Area() * sizeof(Pixel);
+#if !defined(PBRT_RGB_RENDERING)
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
+#else
+    outputRGBFromSensorRGB = SquareMatrix<3>::Diag(1.f,1.f,1.f);
+#endif
 }
 
 void GuidedGBufferFilm::AddSplat(Point2f p, SampledSpectrum v,
@@ -1061,7 +1073,11 @@ SpectralFilm::SpectralFilm(FilmBaseParameters p, Float lambdaMin, Float lambdaMa
       writeFP16(writeFP16),
       pixels(p.pixelBounds, alloc) {
     // Compute _outputRGBFromSensorRGB_ matrix
+#if !defined(PBRT_RGB_RENDERING)
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
+#else
+    outputRGBFromSensorRGB = SquareMatrix<3>::Diag(1.f,1.f,1.f);
+#endif
 
     filterIntegral = filter.Integral();
     CHECK(!pixelBounds.IsEmpty());

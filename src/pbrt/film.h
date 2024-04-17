@@ -93,10 +93,14 @@ class PixelSensor {
 
     PBRT_CPU_GPU
     RGB ToSensorRGB(SampledSpectrum L, const SampledWavelengths &lambda) const {
+#if !defined(PBRT_RGB_RENDERING)
         L = SafeDiv(L, lambda.PDF());
         return imagingRatio * RGB((r_bar.Sample(lambda) * L).Average(),
                                   (g_bar.Sample(lambda) * L).Average(),
                                   (b_bar.Sample(lambda) * L).Average());
+#else
+        return imagingRatio * RGB(L[0], L[1], L[2]);
+#endif
     }
 
     // PixelSensor Public Members
