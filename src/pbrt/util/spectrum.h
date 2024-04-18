@@ -68,6 +68,11 @@ class Spectrum : public TaggedPointer<ConstantSpectrum, DenselySampledSpectrum,
 
     PBRT_CPU_GPU
     SampledSpectrum Sample(const SampledWavelengths &lambda) const;
+
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const;
+#endif
 };
 
 // Spectrum Function Declarations
@@ -367,6 +372,11 @@ class ConstantSpectrum {
     PBRT_CPU_GPU
     Float MaxValue() const { return c; }
 
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const;
+#endif
+
     std::string ToString() const;
 
   private:
@@ -453,6 +463,11 @@ class DenselySampledSpectrum {
         return true;
     }
 
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const;
+#endif
+
   private:
     friend struct std::hash<pbrt::DenselySampledSpectrum>;
     // DenselySampledSpectrum Private Members
@@ -494,6 +509,11 @@ class PiecewiseLinearSpectrum {
     static PiecewiseLinearSpectrum *FromInterleaved(pstd::span<const Float> samples,
                                                     bool normalize, Allocator alloc);
 
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const;
+#endif
+
   private:
     // PiecewiseLinearSpectrum Private Members
     pstd::vector<Float> lambdas, values;
@@ -524,6 +544,11 @@ class BlackbodySpectrum {
 
     PBRT_CPU_GPU
     Float MaxValue() const { return 1.f; }
+
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const;
+#endif
 
     std::string ToString() const;
 
@@ -568,6 +593,11 @@ class RGBAlbedoSpectrum {
 #endif
         return s;
     }
+
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const;
+#endif
 
     std::string ToString() const;
 
@@ -624,6 +654,16 @@ class RGBUnboundedSpectrum {
         return s;
     }
 
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGB GetRGB() const {
+        return rgb;
+    }
+
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const {return *this;}
+#endif
+
     std::string ToString() const;
 
   private:
@@ -642,6 +682,10 @@ class RGBIlluminantSpectrum {
     RGBIlluminantSpectrum() = default;
     PBRT_CPU_GPU
     RGBIlluminantSpectrum(const RGBColorSpace &cs, RGB rgb);
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBIlluminantSpectrum(RGBUnboundedSpectrum s): rgb(s.GetRGB()) {}
+#endif
 
     PBRT_CPU_GPU
     Float operator()(Float lambda) const {
@@ -688,6 +732,18 @@ class RGBIlluminantSpectrum {
         return s;
 #endif
     }
+
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    bool operator==(const RGBIlluminantSpectrum &s) const { return rgb == s.rgb; }
+    PBRT_CPU_GPU
+    bool operator!=(const RGBIlluminantSpectrum &s) const { return rgb != s.rgb; }
+#endif
+
+#if defined(PBRT_RGB_RENDERING)
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum ToRGBUnbounded(const RGBColorSpace &cs) const;
+#endif
 
     std::string ToString() const;
 
@@ -860,6 +916,12 @@ PBRT_CPU_GPU inline Float Spectrum::MaxValue() const {
     return Dispatch(max);
 }
 
+#if defined(PBRT_RGB_RENDERING)
+inline RGBUnboundedSpectrum Spectrum::ToRGBUnbounded(const RGBColorSpace &cs) const {
+    auto rgbUnbound = [&](auto ptr) { return ptr->ToRGBUnbounded(cs); };
+    return Dispatch(rgbUnbound);
+}
+#endif
 }  // namespace pbrt
 
 namespace std {

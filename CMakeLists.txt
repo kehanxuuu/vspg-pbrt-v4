@@ -109,7 +109,7 @@ endif()
 
 ###########################################################################
 # Enable RGB mode
-option(PBRT_WITH_RGB "Enable RGB rendering in favor of spectral rendering." ON)
+option(PBRT_WITH_RGB "Enable RGB rendering in favor of spectral rendering." OFF)
 
 if(PBRT_WITH_RGB)
   ADD_DEFINITIONS (-D PBRT_RGB_RENDERING )
@@ -1128,6 +1128,7 @@ set (PBRT_TEST_SOURCE
   src/pbrt/util/vecmath_test.cpp
   )
 
+if(NOT PBRT_WITH_RGB)
 add_executable (pbrt_test src/pbrt/cmd/pbrt_test.cpp ${PBRT_TEST_SOURCE})
 
 target_link_libraries (pbrt_test PRIVATE ${ALL_PBRT_LIBS} pbrt_opt pbrt_warnings)
@@ -1140,6 +1141,7 @@ add_sanitizers (pbrt_test)
 add_test (pbrt_unit_test pbrt_test)
 
 set_property (TARGET pbrt_test PROPERTY FOLDER "cmd")
+endif()
 
 ###############################
 # Installation

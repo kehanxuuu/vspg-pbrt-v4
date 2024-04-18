@@ -409,8 +409,19 @@ std::vector<Spectrum> ParameterDictionary::extractSpectrumArray(
     else if (param.type == "blackbody")
         return returnArray<Spectrum>(
             param.floats, param, 1,
-            [this, &alloc](const Float *v, const FileLoc *loc) -> Spectrum {
+#if !defined(PBRT_RGB_RENDERING)
+            [&alloc, param](const Float *v, const FileLoc *loc) -> Spectrum {
+
                 return alloc.new_object<BlackbodySpectrum>(v[0]);
+#else
+            [this, &alloc, param](const Float *v, const FileLoc *loc) -> Spectrum {
+                const RGBColorSpace &cs =
+                    param.colorSpace ? *param.colorSpace : *colorSpace;
+                BlackbodySpectrum spec(v[0]);
+                XYZ xyz = SpectrumToXYZ(&spec);
+                RGB rgb = cs.ToRGB(xyz);
+                return alloc.new_object<RGBUnboundedSpectrum>(cs, rgb);
+#endif
             });
     else if (param.type == "spectrum" && !param.floats.empty()) {
         if (param.floats.size() % 2 != 0)
@@ -435,12 +446,21 @@ std::vector<Spectrum> ParameterDictionary::extractSpectrumArray(
                     lambda[i] = v[2 * i];
                     value[i] = v[2 * i + 1];
                 }
+#if !defined(PBRT_RGB_RENDERING)
                 return alloc.new_object<PiecewiseLinearSpectrum>(lambda, value, alloc);
-            });
+#else
+                const RGBColorSpace &cs =
+                    param.colorSpace ? *param.colorSpace : *colorSpace;
+                PiecewiseLinearSpectrum spec(lambda, value);
+                XYZ xyz = SpectrumToXYZ(&spec);
+                RGB rgb = cs.ToRGB(xyz);
+                return alloc.new_object<RGBUnboundedSpectrum>(cs, rgb);
+#endif
+        });
     } else if (param.type == "spectrum" && !param.strings.empty())
         return returnArray<Spectrum>(
             param.strings, param, 1,
-            [param, &alloc](const std::string *s, const FileLoc *loc) -> Spectrum {
+            [this, param, &alloc](const std::string *s, const FileLoc *loc) -> Spectrum {
                 Spectrum spd = GetNamedSpectrum(*s);
                 if (spd)
                     return spd;
@@ -448,7 +468,17 @@ std::vector<Spectrum> ParameterDictionary::extractSpectrumArray(
                 spd = readSpectrumFromFile(*s, alloc);
                 if (!spd)
                     ErrorExit(&param.loc, "%s: unable to read valid spectrum file", *s);
+#if !defined(PBRT_RGB_RENDERING)
                 return spd;
+
+#else
+                const RGBColorSpace &cs =
+                    param.colorSpace ? *param.colorSpace : *colorSpace;
+                XYZ xyz = SpectrumToXYZ(spd);
+                RGB rgb = cs.ToRGB(xyz);
+                return alloc.new_object<RGBUnboundedSpectrum>(cs, rgb);
+#endif
+
             });
 
     return {};
