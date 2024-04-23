@@ -35,8 +35,11 @@
 [submodule "src/ext/glfw"]
 	path = src/ext/glfw
 	url = https://github.com/glfw/glfw.git
-
 [submodule "src/ext/openpgl"]
 	path = src/ext/openpgl
 	url = https://github.com/OpenPathGuidingLibrary/openpgl.git
 	tag = v0.6.0
+[submodule "src/ext/oidn"]
+	path = src/ext/oidn
+	url = https://github.com/OpenImageDenoise/oidn.git
+	tag = v2.2.2

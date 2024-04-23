@@ -154,3 +154,41 @@ if (PBRT_WITH_PATH_GUIDING)
   endif()
 
 endif()
+
+
+###########################################################################
+# Open PGL
+if (PBRT_WITH_OIDN)
+
+  find_package (oidn)
+
+  if (OIDN_FOUND)
+    message (STATUS "Found Open Image Denoise version ${OIDN_VERSION}")
+  else ()
+    message (STATUS "Open Image Denoise not found; building it from scratch.")
+    message(STATUS "ISPC_EXECUTABLE = ${ISPC_EXECUTABLE}")
+    set(TBB_ROOT ${TBB_PATH})
+    set(ISPC_EXECUTABLE= ${ISPC_EXECUTABLE})
+    set(DOIDN_APPS OFF)
+
+    if(APPLE AND (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_OSX_ARCHITECTURES MATCHES "arm64"))
+      set(OIDN_DEVICE_METAL ON)
+    endif()
+
+    add_subdirectory (oidn)
+    set_property (TARGET OpenImageDenoise PROPERTY FOLDER "ext/oidn")
+    
+    set (OIDN_INCLUDE_DIR
+      ${CMAKE_INSTALL_PREFIX}/include
+      PARENT_SCOPE
+    )
+
+    set (OIDN_LIBRARIES
+      openpgl
+      tbb
+      PARENT_SCOPE
+    )
+  endif()
+
+endif()
+

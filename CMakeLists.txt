@@ -107,6 +107,14 @@ if(PBRT_WITH_PATH_GUIDING)
 endif()
 
 ###########################################################################
+# path guiding (Open PGL)
+option(PBRT_WITH_OIDN "Build PBRT with Open Image Denoise (OIDN) support." ON)
+
+if(PBRT_WITH_OIDN)
+  ADD_DEFINITIONS (-D PBRT_WITH_OIDN )
+endif()
+
+###########################################################################
 # Enable RGB mode
 option(PBRT_WITH_RGB "Enable RGB rendering in favor of spectral rendering." OFF)
 
@@ -644,6 +652,7 @@ SET (PBRT_UTIL_SOURCE
   src/pbrt/util/check.cpp
   src/pbrt/util/color.cpp
   src/pbrt/util/colorspace.cpp
+  src/pbrt/denoiser.cpp
   src/pbrt/util/display.cpp
   src/pbrt/util/error.cpp
   src/pbrt/util/file.cpp
