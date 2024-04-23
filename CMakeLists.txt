@@ -902,8 +902,16 @@ target_include_directories (pbrt_lib PUBLIC
   ${CMAKE_CURRENT_BINARY_DIR}
   ${GLFW_INCLUDE}
   ${GLAD_INCLUDE}
-  ${OPENPGL_INCLUDE_DIR}
 )
+
+if (PBRT_WITH_PATH_GUIDING)
+  target_include_directories (pbrt_lib SYSTEM PUBLIC ${OPENPGL_INCLUDE_DIR})
+endif()
+
+if (PBRT_WITH_OIDN)
+  target_include_directories (pbrt_lib SYSTEM PUBLIC ${OIDN_INCLUDE_DIR})
+endif()
+
 
 if (PBRT_CUDA_ENABLED AND PBRT_OPTIX7_PATH)
     target_include_directories (pbrt_lib SYSTEM PUBLIC ${PBRT_OPTIX7_PATH}/include)
@@ -933,12 +941,19 @@ set (ALL_PBRT_LIBS
   glfw
   glad
   OpenGL::GL
-  ${OPENPGL_LIBRARIES}
   )
 
 link_directories(${CMAKE_INSTALL_PREFIX}/lib)
 if(PBRT_WITH_PATH_GUIDING)
+  set (ALL_PBRT_LIBS ${ALL_PBRT_LIBS}
+    ${OPENPGL_LIBRARIES})
   add_dependencies(pbrt_lib ep_openpgl)
+endif()
+
+if(PBRT_WITH_OIDN)
+  set (ALL_PBRT_LIBS ${ALL_PBRT_LIBS}
+      OpenImageDenoise)
+  add_dependencies(pbrt_lib OpenImageDenoise)
 endif()
 
 if (PBRT_CUDA_ENABLED)

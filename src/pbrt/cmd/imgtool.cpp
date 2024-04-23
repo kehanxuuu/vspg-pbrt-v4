@@ -2277,7 +2277,7 @@ int denoise_optix(std::vector<std::string> args) {
         }
     }
 
-    Denoiser denoiser((Vector2i)image.Resolution(), nLayers == 3);
+    pbrt::OptixDenoiser denoiser((Vector2i)image.Resolution(), nLayers == 3);
 
     size_t imageBytes = 3 * image.Resolution().x * image.Resolution().y * sizeof(float);
 

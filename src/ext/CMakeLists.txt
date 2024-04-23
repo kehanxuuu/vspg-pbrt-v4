@@ -175,11 +175,18 @@ if (PBRT_WITH_OIDN)
       set(OIDN_DEVICE_METAL ON)
     endif()
 
+    if(NOT APPLE)
+      find_package (CUDA)
+      if(CUDA_FOUND)
+        set(OIDN_DEVICE_CUDA ON)
+      endif()
+    endif()
+
     add_subdirectory (oidn)
     set_property (TARGET OpenImageDenoise PROPERTY FOLDER "ext/oidn")
     
     set (OIDN_INCLUDE_DIR
-      ${CMAKE_INSTALL_PREFIX}/include
+      ${CMAKE_CURRENT_SOURCE_DIR}/oidn/include
       PARENT_SCOPE
     )
 
