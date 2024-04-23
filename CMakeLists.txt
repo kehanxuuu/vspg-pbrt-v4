@@ -111,7 +111,7 @@ endif()
 option(PBRT_WITH_OIDN "Build PBRT with Open Image Denoise (OIDN) support." ON)
 
 if(PBRT_WITH_OIDN)
-  ADD_DEFINITIONS (-D PBRT_WITH_OIDN )
+  list (APPEND PBRT_DEFINITIONS "PBRT_WITH_OIDN")
 endif()
 
 ###########################################################################
@@ -947,13 +947,13 @@ link_directories(${CMAKE_INSTALL_PREFIX}/lib)
 if(PBRT_WITH_PATH_GUIDING)
   set (ALL_PBRT_LIBS ${ALL_PBRT_LIBS}
     ${OPENPGL_LIBRARIES})
-  add_dependencies(pbrt_lib ep_openpgl)
+  add_dependencies(pbrt_lib OpenPGL)
 endif()
 
 if(PBRT_WITH_OIDN)
   set (ALL_PBRT_LIBS ${ALL_PBRT_LIBS}
       OpenImageDenoise)
-  add_dependencies(pbrt_lib OpenImageDenoise)
+  add_dependencies(pbrt_lib OIDN)
 endif()
 
 if (PBRT_CUDA_ENABLED)
