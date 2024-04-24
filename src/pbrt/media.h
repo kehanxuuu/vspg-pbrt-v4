@@ -224,11 +224,19 @@ class HomogeneousMedium {
     using MajorantIterator = HomogeneousMajorantIterator;
 
     // HomogeneousMedium Public Methods
+#if !defined(PBRT_RGB_RENDERING)
     HomogeneousMedium(Spectrum sigma_a, Spectrum sigma_s, Float sigmaScale, Spectrum Le,
                       Float LeScale, Float g, Allocator alloc)
         : sigma_a_spec(sigma_a, alloc),
           sigma_s_spec(sigma_s, alloc),
           Le_spec(Le, alloc),
+#else
+    HomogeneousMedium(Spectrum sigma_a, Spectrum sigma_s, Float sigmaScale, Spectrum Le,
+                      Float LeScale, Float g, const RGBColorSpace* cs, Allocator alloc)
+        : sigma_a_spec(*cs, sigma_a.ToRGBUnbounded(*cs).GetRGB()),
+          sigma_s_spec(*cs, sigma_s.ToRGBUnbounded(*cs).GetRGB()),
+          Le_spec(*cs, Le.ToRGBUnbounded(*cs).GetRGB()),
+#endif
           phase(g) {
         sigma_a_spec.Scale(sigmaScale);
         sigma_s_spec.Scale(sigmaScale);
@@ -261,7 +269,11 @@ class HomogeneousMedium {
 
   private:
     // HomogeneousMedium Private Data
+#if !defined(PBRT_RGB_RENDERING)
     DenselySampledSpectrum sigma_a_spec, sigma_s_spec, Le_spec;
+#else
+    RGBUnboundedSpectrum sigma_a_spec, sigma_s_spec, Le_spec;
+#endif
     HGPhaseFunction phase;
 };
 
@@ -272,12 +284,19 @@ class GridMedium {
     using MajorantIterator = DDAMajorantIterator;
 
     // GridMedium Public Methods
+#if !defined(PBRT_RGB_RENDERING)
     GridMedium(const Bounds3f &bounds, const Transform &renderFromMedium,
                Spectrum sigma_a, Spectrum sigma_s, Float sigmaScale, Float g,
                SampledGrid<Float> density, pstd::optional<SampledGrid<Float>> temperature,
                Float temperatureScale, Float temperatureOffset,
                Spectrum Le, SampledGrid<Float> LeScale, Allocator alloc);
-
+#else
+    GridMedium(const Bounds3f &bounds, const Transform &renderFromMedium,
+               Spectrum sigma_a, Spectrum sigma_s, Float sigmaScale, Float g,
+               SampledGrid<Float> density, pstd::optional<SampledGrid<Float>> temperature,
+               Float temperatureScale, Float temperatureOffset,
+               Spectrum Le, SampledGrid<Float> LeScale, const RGBColorSpace* cs, Allocator alloc);
+#endif
     static GridMedium *Create(const ParameterDictionary &parameters,
                               const Transform &renderFromMedium, const FileLoc *loc,
                               Allocator alloc);
@@ -344,11 +363,19 @@ class GridMedium {
     // GridMedium Private Members
     Bounds3f bounds;
     Transform renderFromMedium;
+#if !defined(PBRT_RGB_RENDERING)
     DenselySampledSpectrum sigma_a_spec, sigma_s_spec;
+#else
+    RGBUnboundedSpectrum sigma_a_spec, sigma_s_spec;
+#endif
     SampledGrid<Float> densityGrid;
     HGPhaseFunction phase;
     pstd::optional<SampledGrid<Float>> temperatureGrid;
+#if !defined(PBRT_RGB_RENDERING)
     DenselySampledSpectrum Le_spec;
+#else
+    RGBUnboundedSpectrum Le_spec;
+#endif
     SampledGrid<Float> LeScale;
     bool isEmissive;
     Float temperatureScale, temperatureOffset;
@@ -449,13 +476,24 @@ class CloudMedium {
                             density, wispiness, frequency);
     }
 
+#if !defined(PBRT_RGB_RENDERING)
     CloudMedium(const Bounds3f &bounds, const Transform &renderFromMedium,
                 Spectrum sigma_a, Spectrum sigma_s, Float g, Float density,
                 Float wispiness, Float frequency, Allocator alloc)
+#else
+    CloudMedium(const Bounds3f &bounds, const Transform &renderFromMedium,
+                Spectrum sigma_a, Spectrum sigma_s, Float g, Float density,
+                Float wispiness, Float frequency, const RGBColorSpace* cs, Allocator alloc)
+#endif
         : bounds(bounds),
           renderFromMedium(renderFromMedium),
+#if !defined(PBRT_RGB_RENDERING)
           sigma_a_spec(sigma_a, alloc),
           sigma_s_spec(sigma_s, alloc),
+#else
+          sigma_a_spec(*cs, sigma_a.ToRGBUnbounded(*cs).GetRGB()),
+          sigma_s_spec(*cs, sigma_s.ToRGBUnbounded(*cs).GetRGB()),
+#endif
           phase(g),
           density(density),
           wispiness(wispiness),
@@ -524,7 +562,11 @@ class CloudMedium {
     Bounds3f bounds;
     Transform renderFromMedium;
     HGPhaseFunction phase;
+#if !defined(PBRT_RGB_RENDERING)
     DenselySampledSpectrum sigma_a_spec, sigma_s_spec;
+#else
+    RGBUnboundedSpectrum sigma_a_spec, sigma_s_spec;
+#endif
     Float density, wispiness, frequency;
 };
 
@@ -609,12 +651,17 @@ class NanoVDBMedium {
                                  Allocator alloc);
 
     std::string ToString() const;
-
+#if !defined(PBRT_RGB_RENDERING)
     NanoVDBMedium(const Transform &renderFromMedium, Spectrum sigma_a, Spectrum sigma_s,
                   Float sigmaScale, Float g, nanovdb::GridHandle<NanoVDBBuffer> dg,
                   nanovdb::GridHandle<NanoVDBBuffer> tg, Float LeScale,
                   Float temperatureOffset, Float temperatureScale, Allocator alloc);
-
+#else
+    NanoVDBMedium(const Transform &renderFromMedium, Spectrum sigma_a, Spectrum sigma_s,
+                  Float sigmaScale, Float g, nanovdb::GridHandle<NanoVDBBuffer> dg,
+                  nanovdb::GridHandle<NanoVDBBuffer> tg, Float LeScale,
+                  Float temperatureOffset, Float temperatureScale, const RGBColorSpace* cs, Allocator alloc);
+#endif
     PBRT_CPU_GPU
     bool IsEmissive() const { return temperatureFloatGrid && LeScale > 0; }
 
@@ -672,7 +719,11 @@ class NanoVDBMedium {
     // NanoVDBMedium Private Members
     Bounds3f bounds;
     Transform renderFromMedium;
+#if !defined(PBRT_RGB_RENDERING)
     DenselySampledSpectrum sigma_a_spec, sigma_s_spec;
+#else
+    RGBUnboundedSpectrum sigma_a_spec, sigma_s_spec;
+#endif
     HGPhaseFunction phase;
     MajorantGrid majorantGrid;
     nanovdb::GridHandle<NanoVDBBuffer> densityGrid;

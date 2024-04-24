@@ -28,6 +28,10 @@
 #include <string>
 #include <vector>
 
+#if defined(PBRT_RGB_RENDERING)
+#include <iostream>
+#endif
+
 namespace pbrt {
 
 // Spectrum Constants
@@ -93,8 +97,10 @@ namespace Spectra {
 DenselySampledSpectrum D(Float T, Allocator alloc);
 }  // namespace Spectra
 
+PBRT_CPU_GPU
 Float SpectrumToPhotometric(Spectrum s);
 
+PBRT_CPU_GPU
 XYZ SpectrumToXYZ(Spectrum s);
 
 // SampledSpectrum Definition
@@ -446,6 +452,9 @@ class DenselySampledSpectrum {
     PBRT_CPU_GPU
     Float operator()(Float lambda) const {
         DCHECK_GT(lambda, 0);
+#if defined(PBRT_RGB_RENDERING) && !defined(PBRT_IS_GPU_CODE)
+        //std::cout << "RGB mode: operator()(Float lambda) should not be called" << std::endl;
+#endif
         int offset = std::lround(lambda) - lambda_min;
         if (offset < 0 || offset >= values.size())
             return 0;
@@ -531,6 +540,9 @@ class BlackbodySpectrum {
 
     PBRT_CPU_GPU
     Float operator()(Float lambda) const {
+#if defined(PBRT_RGB_RENDERING) && !defined(PBRT_IS_GPU_CODE)
+        std::cout << "BlackbodySpectrum: operator()(Float lambda) should not be called in RGB rendering mode" << std::endl;
+#endif
         return Blackbody(lambda, T) * normalizationFactor;
     }
 
@@ -567,6 +579,9 @@ class RGBAlbedoSpectrum {
         return rsp(lambda); 
 #else
         // TODO: fix = first channel, max, or avg
+#if defined(PBRT_RGB_RENDERING) && !defined(PBRT_IS_GPU_CODE)
+        std::cout << "RGBAlbedoSpectrum: operator()(Float lambda) should not be called in RGB rendering mode" << std::endl;
+#endif
         return lambda;
 #endif
     }
@@ -619,6 +634,9 @@ class RGBUnboundedSpectrum {
         return scale * rsp(lambda);
 #else
         // TODO: fix = first channel, max, or avg
+#if defined(PBRT_RGB_RENDERING) && !defined(PBRT_IS_GPU_CODE)
+        std::cout << "RGBUnboundedSpectrum: operator()(Float lambda) should not be called in RGB rendering mode" << std::endl;
+#endif
         return lambda;
 #endif
     }
@@ -639,7 +657,11 @@ class RGBUnboundedSpectrum {
     PBRT_CPU_GPU
     RGBUnboundedSpectrum() : rsp(0, 0, 0), scale(0) {}
 #else
+    PBRT_CPU_GPU
     RGBUnboundedSpectrum() : rgb(0, 0, 0) {}
+
+    PBRT_CPU_GPU
+    void Scale(Float scale) {rgb*=scale;}
 #endif
 
     PBRT_CPU_GPU
@@ -685,6 +707,9 @@ class RGBIlluminantSpectrum {
 #if defined(PBRT_RGB_RENDERING)
     PBRT_CPU_GPU
     RGBIlluminantSpectrum(RGBUnboundedSpectrum s): rgb(s.GetRGB()) {}
+
+    PBRT_CPU_GPU
+    RGBIlluminantSpectrum(const RGBColorSpace &cs, Spectrum spec);
 #endif
 
     PBRT_CPU_GPU
@@ -695,6 +720,9 @@ class RGBIlluminantSpectrum {
         return scale * rsp(lambda) * (*illuminant)(lambda);
 #else
         // TODO: fix = first channel, max, or avg
+#if defined(PBRT_RGB_RENDERING) && !defined(PBRT_IS_GPU_CODE)
+        std::cout << "RGBIlluminantSpectrum: operator()(Float lambda) should not be called in RGB rendering mode" << std::endl;
+#endif
         return lambda;
 #endif
     }

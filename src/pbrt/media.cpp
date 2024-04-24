@@ -195,9 +195,14 @@ HomogeneousMedium *HomogeneousMedium::Create(const ParameterDictionary &paramete
 
     Float sigmaScale = parameters.GetOneFloat("scale", 1.f);
     Float g = parameters.GetOneFloat("g", 0.0f);
-
+#if !defined(PBRT_RGB_RENDERING)
     return alloc.new_object<HomogeneousMedium>(sig_a, sig_s, sigmaScale, Le, LeScale, g,
                                                alloc);
+#else
+    const RGBColorSpace* cs = parameters.ColorSpace();
+    return alloc.new_object<HomogeneousMedium>(sig_a, sig_s, sigmaScale, Le, LeScale, g,
+                                               cs, alloc);
+#endif
 }
 
 std::string HomogeneousMedium::ToString() const {
@@ -209,22 +214,40 @@ std::string HomogeneousMedium::ToString() const {
 STAT_MEMORY_COUNTER("Memory/Volume grids", volumeGridBytes);
 
 // GridMedium Method Definitions
+#if !defined(PBRT_RGB_RENDERING)
 GridMedium::GridMedium(const Bounds3f &bounds, const Transform &renderFromMedium,
                        Spectrum sigma_a, Spectrum sigma_s, Float sigmaScale, Float g,
                        SampledGrid<Float> d,
                        pstd::optional<SampledGrid<Float>> temperature,
                        Float temperatureScale, Float temperatureOffset,
                        Spectrum Le, SampledGrid<Float> LeGrid, Allocator alloc)
+#else
+GridMedium::GridMedium(const Bounds3f &bounds, const Transform &renderFromMedium,
+                       Spectrum sigma_a, Spectrum sigma_s, Float sigmaScale, Float g,
+                       SampledGrid<Float> d,
+                       pstd::optional<SampledGrid<Float>> temperature,
+                       Float temperatureScale, Float temperatureOffset,
+                       Spectrum Le, SampledGrid<Float> LeGrid, const RGBColorSpace* cs, Allocator alloc)
+#endif
     : bounds(bounds),
       renderFromMedium(renderFromMedium),
+#if !defined(PBRT_RGB_RENDERING)
       sigma_a_spec(sigma_a, alloc),
       sigma_s_spec(sigma_s, alloc),
+#else
+      sigma_a_spec(*cs, sigma_a.ToRGBUnbounded(*cs).GetRGB()),
+      sigma_s_spec(*cs, sigma_s.ToRGBUnbounded(*cs).GetRGB()),
+#endif
       densityGrid(std::move(d)),
       phase(g),
       temperatureGrid(std::move(temperature)),
       temperatureScale(temperatureScale),
       temperatureOffset(temperatureOffset),
+#if !defined(PBRT_RGB_RENDERING)
       Le_spec(Le, alloc),
+#else
+      Le_spec(*cs, Le.ToRGBUnbounded(*cs).GetRGB()),
+#endif
       LeScale(std::move(LeGrid)),
       majorantGrid(bounds, {16, 16, 16}, alloc) {
     sigma_a_spec.Scale(sigmaScale);
@@ -323,10 +346,18 @@ GridMedium *GridMedium::Create(const ParameterDictionary &parameters,
                                                      parameters.GetOneFloat("temperaturecutoff", 0.f));
     Float temperatureScale = parameters.GetOneFloat("temperaturescale", 1.f);
 
+#if !defined(PBRT_RGB_RENDERING)
     return alloc.new_object<GridMedium>(
         Bounds3f(p0, p1), renderFromMedium, sigma_a, sigma_s, sigmaScale, g,
         std::move(densityGrid), std::move(temperatureGrid), temperatureScale,
         temperatureOffset, Le, std::move(LeGrid), alloc);
+#else
+    const RGBColorSpace* cs = parameters.ColorSpace();
+    return alloc.new_object<GridMedium>(
+        Bounds3f(p0, p1), renderFromMedium, sigma_a, sigma_s, sigmaScale, g,
+        std::move(densityGrid), std::move(temperatureGrid), temperatureScale,
+        temperatureOffset, Le, std::move(LeGrid), cs, alloc);
+#endif
 }
 
 std::string GridMedium::ToString() const {
@@ -478,9 +509,16 @@ CloudMedium *CloudMedium::Create(const ParameterDictionary &parameters,
     Point3f p0 = parameters.GetOnePoint3f("p0", Point3f(0.f, 0.f, 0.f));
     Point3f p1 = parameters.GetOnePoint3f("p1", Point3f(1.f, 1.f, 1.f));
 
+#if !defined(PBRT_RGB_RENDERING)
     return alloc.new_object<CloudMedium>(Bounds3f(p0, p1), renderFromMedium, sigma_a,
                                          sigma_s, g, density, wispiness, frequency,
                                          alloc);
+#else
+    const RGBColorSpace* cs = parameters.ColorSpace();
+    return alloc.new_object<CloudMedium>(Bounds3f(p0, p1), renderFromMedium, sigma_a,
+                                         sigma_s, g, density, wispiness, frequency,
+                                         cs, alloc);
+#endif
 }
 
 // NanoVDBMedium Method Definitions
@@ -508,15 +546,29 @@ static nanovdb::GridHandle<Buffer> readGrid(const std::string &filename,
     return grid;
 }
 
+#if !defined(PBRT_RGB_RENDERING)
 NanoVDBMedium::NanoVDBMedium(const Transform &renderFromMedium, Spectrum sigma_a,
                              Spectrum sigma_s, Float sigmaScale, Float g,
                              nanovdb::GridHandle<NanoVDBBuffer> dg,
                              nanovdb::GridHandle<NanoVDBBuffer> tg, Float LeScale,
                              Float temperatureOffset, Float temperatureScale,
                              Allocator alloc)
+#else
+NanoVDBMedium::NanoVDBMedium(const Transform &renderFromMedium, Spectrum sigma_a,
+                             Spectrum sigma_s, Float sigmaScale, Float g,
+                             nanovdb::GridHandle<NanoVDBBuffer> dg,
+                             nanovdb::GridHandle<NanoVDBBuffer> tg, Float LeScale,
+                             Float temperatureOffset, Float temperatureScale,
+                             const RGBColorSpace* cs, Allocator alloc)
+#endif
     : renderFromMedium(renderFromMedium),
+#if !defined(PBRT_RGB_RENDERING)
       sigma_a_spec(sigma_a, alloc),
       sigma_s_spec(sigma_s, alloc),
+#else
+      sigma_a_spec(*cs, sigma_a.ToRGBUnbounded(*cs).GetRGB()),
+      sigma_s_spec(*cs, sigma_s.ToRGBUnbounded(*cs).GetRGB()),
+#endif
       phase(g),
       majorantGrid(Bounds3f(), {64, 64, 64}, alloc),
       densityGrid(std::move(dg)),
@@ -659,9 +711,17 @@ NanoVDBMedium *NanoVDBMedium::Create(const ParameterDictionary &parameters,
         sigma_s = alloc.new_object<ConstantSpectrum>(1.f);
     Float sigmaScale = parameters.GetOneFloat("scale", 1.f);
 
+#if !defined(PBRT_RGB_RENDERING)
     return alloc.new_object<NanoVDBMedium>(
         renderFromMedium, sigma_a, sigma_s, sigmaScale, g, std::move(densityGrid),
         std::move(temperatureGrid), LeScale, temperatureOffset, temperatureScale, alloc);
+#else
+    const RGBColorSpace* cs = parameters.ColorSpace();
+    return alloc.new_object<NanoVDBMedium>(
+        renderFromMedium, sigma_a, sigma_s, sigmaScale, g, std::move(densityGrid),
+        std::move(temperatureGrid), LeScale, temperatureOffset, temperatureScale, cs, alloc);
+
+#endif
 }
 
 Medium Medium::Create(const std::string &name, const ParameterDictionary &parameters,
