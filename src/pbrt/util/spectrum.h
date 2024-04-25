@@ -201,6 +201,23 @@ class SampledSpectrum {
     PBRT_CPU_GPU
     bool operator!=(const SampledSpectrum &s) const { return values != s.values; }
 
+    PBRT_CPU_GPU
+    bool IsZero() const {
+        for (int i = 0; i < NSpectrumSamples; ++i)
+            if(values[i] != 0.f)
+                return false;
+        return true;
+    }
+
+
+    PBRT_CPU_GPU
+    bool IsValid() const {
+        for (int i = 0; i < NSpectrumSamples; ++i)
+            if (IsNaN(values[i]) || !IsFinite(values[i]))
+                return false;
+        return true;
+    }
+
     std::string ToString() const;
 
     PBRT_CPU_GPU
