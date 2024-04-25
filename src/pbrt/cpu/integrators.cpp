@@ -263,7 +263,7 @@ void RayIntegrator::EvaluatePixelSample(Point2i pPixel, int sampleIndex, Sampler
         ++nCameraRays;
         // Evaluate radiance along camera ray
         bool initializeVisibleSurface = camera.GetFilm().UsesVisibleSurface();
-        L = cameraRay->weight * Li(cameraRay->ray, lambda, sampler, scratchBuffer,
+        L = cameraRay->weight * Li(pPixel, cameraRay->ray, lambda, sampler, scratchBuffer,
                                    initializeVisibleSurface ? &visibleSurface : nullptr);
 
         // Issue warning if unexpected radiance value is returned
@@ -393,7 +393,7 @@ SimplePathIntegrator::SimplePathIntegrator(int maxDepth, bool sampleLights,
       sampleBSDF(sampleBSDF),
       lightSampler(lights, Allocator()) {}
 
-SampledSpectrum SimplePathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+SampledSpectrum SimplePathIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                          Sampler sampler, ScratchBuffer &scratchBuffer,
                                          VisibleSurface *) const {
     // Estimate radiance along ray using simple path tracing
@@ -632,7 +632,7 @@ PathIntegrator::PathIntegrator(int maxDepth, Camera camera, Sampler sampler,
       lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
       regularize(regularize) {}
 
-SampledSpectrum PathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+SampledSpectrum PathIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                    Sampler sampler, ScratchBuffer &scratchBuffer,
                                    VisibleSurface *visibleSurf) const {
     // Declare local variables for _PathIntegrator::Li()_
@@ -838,7 +838,7 @@ SimpleVolPathIntegrator::SimpleVolPathIntegrator(int maxDepth, Camera camera,
     }
 }
 
-SampledSpectrum SimpleVolPathIntegrator::Li(RayDifferential ray,
+SampledSpectrum SimpleVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                                             SampledWavelengths &lambda, Sampler sampler,
                                             ScratchBuffer &buf, VisibleSurface *) const {
     // Declare local variables for delta tracking integration
@@ -957,7 +957,7 @@ STAT_COUNTER("Integrator/Volume interactions", volumeInteractions);
 STAT_COUNTER("Integrator/Surface interactions", surfaceInteractions);
 
 // VolPathIntegrator Method Definitions
-SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+SampledSpectrum VolPathIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                       Sampler sampler, ScratchBuffer &scratchBuffer,
                                       VisibleSurface *visibleSurf) const {
     // Declare state variables for volumetric path sampling
@@ -1422,7 +1422,7 @@ AOIntegrator::AOIntegrator(bool cosSample, Float maxDist, Camera camera, Sampler
       illuminant(illuminant),
       illumScale(1.f / SpectrumToPhotometric(illuminant)) {}
 
-SampledSpectrum AOIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+SampledSpectrum AOIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                  Sampler sampler, ScratchBuffer &scratchBuffer,
                                  VisibleSurface *visibleSurface) const {
     // Intersect _ray_ with scene and store intersection in _isect_
@@ -2261,7 +2261,7 @@ void BDPTIntegrator::Render() {
     }
 }
 
-SampledSpectrum BDPTIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+SampledSpectrum BDPTIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                    Sampler sampler, ScratchBuffer &scratchBuffer,
                                    VisibleSurface *) const {
     // Trace the camera and light subpaths
@@ -3710,7 +3710,7 @@ std::unique_ptr<Integrator> Integrator::Create(
 
 #ifdef PBRT_WITH_PATH_GUIDING
 // GuidedPathIntegrator Method Definitions
-GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool useNEE, const GuidingSettings guideSettings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
+GuidedPathIntegrator::GuidedPathIntegrator(const int maxDepth, const int minRRDepth, const bool useNEE, const GuidingSettings guideSettings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
                                Primitive aggregate, std::vector<Light> lights,
                                const std::string &lightSampleStrategy, bool regularize)
     : RayIntegrator(camera, sampler, aggregate, lights),
@@ -3740,6 +3740,7 @@ GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool us
                 guiding_field = new openpgl::cpp::Field(guiding_device, guideSettings.guidingCacheFileName);
                 guideTraining = false;
             } else {
+                std::cout << "Warning: Guiding cache file does not exists: guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl;
                 guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
             }
         } else {
@@ -3748,7 +3749,7 @@ GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool us
         guiding_sampleStorage = new openpgl::cpp::SampleStorage();
 
         guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
-        [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage();
+        [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage(true);
                    size_t maxPathSegments = this->maxDepth >= 1 ? this->maxDepth*2 : 30;
                    pss->Reserve(maxPathSegments);
                    pss->SetMaxDistance(guidingInfiniteLightDistance);
@@ -3756,6 +3757,30 @@ GuidedPathIntegrator::GuidedPathIntegrator(int maxDepth, int minRRDepth, bool us
 
         guiding_threadSurfaceSamplingDistribution = new ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>(
         [this]() { return new openpgl::cpp::SurfaceSamplingDistribution(guiding_field); });
+
+        Vector2i resolution = camera.GetFilm().PixelBounds().Diagonal();
+        sensor = camera.GetFilm().GetPixelSensor();
+
+        if(guideSettings.loadContributionEstimate) {
+            if(FileExists(guideSettings.contributionEstimateFileName)) {
+                contributionEstimate = new ContributionEstimate(guideSettings.contributionEstimateFileName);
+                contributionEstimateReady = true;
+                calulateContributionEstimate = false;
+            } else {
+                std::cout << "Warning: Contribution estimate file does not exists: contributionEstimateFileName = " << guideSettings.contributionEstimateFileName << std::endl;
+            }
+        }
+
+        if(!contributionEstimateReady && (guideSettings.storeContributionEstimate || guideSettings.guideRR)){
+            calulateContributionEstimate = true;
+            contributionEstimate = new ContributionEstimate(resolution);
+            contributionEstimateReady = false;
+        }
+
+        if(guideSettings.guideRR) {
+            this->minRRDepth = 1;
+        }
+
       }
 
 GuidedPathIntegrator::~GuidedPathIntegrator() {
@@ -3764,11 +3789,20 @@ GuidedPathIntegrator::~GuidedPathIntegrator() {
         std::cout << "GuidedPathIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
         guiding_field->Store(guideSettings.guidingCacheFileName);
     }
+
+    if(guideSettings.storeContributionEstimate){
+        contributionEstimate->Store(guideSettings.contributionEstimateFileName);
+    }
+
+    delete guiding_device;
+    delete guiding_sampleStorage;
+    delete guiding_field;
+    delete contributionEstimate;
 }
 
 void GuidedPathIntegrator::PostProcessWave() {
 
-
+    waveCounter++;
     std::cout << "GuidedPathIntegrator::PostProcessWave()" << std::endl;
     if(guideTraining) {
         const size_t numValidSamples = guiding_sampleStorage->GetSizeSurface() + guiding_sampleStorage->GetSizeVolume();
@@ -3782,9 +3816,15 @@ void GuidedPathIntegrator::PostProcessWave() {
         }
     }
     guiding_sampleStorage->Clear();
+
+    if(calulateContributionEstimate && waveCounter == std::pow(2.0f, contributionEstimateWave)) {
+        contributionEstimate->Update();
+        contributionEstimateReady = true;
+        contributionEstimateWave++;
+    }
 }
 
-SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                    Sampler sampler, ScratchBuffer &scratchBuffer,
                                    VisibleSurface *visibleSurf) const {
     
@@ -3792,6 +3832,16 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
     openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution = guiding_threadSurfaceSamplingDistribution->Get();
 
     openpgl::cpp::PathSegment* pathSegmentData = nullptr;
+
+    ContributionEstimate::ContributionEstimateData ced;
+
+    SampledSpectrum pixelContributionEstimate(0.f);
+    SampledSpectrum adjointEstimate(0.f);
+    bool guideRR = false;
+    if (guideSettings.guideRR && contributionEstimateReady) {
+        pixelContributionEstimate = contributionEstimate->GetContributionEstimate(pPixel);
+        guideRR = true;
+    }
 
     // Declare local variables for GuidedPathIntegrator::Li()
     SampledSpectrum L(0.f), beta(1.f);
@@ -3869,7 +3919,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         add_direct_contribution = false;
 
         // Initialize _visibleSurf_ at first intersection
-        if (depth == 0 && visibleSurf) {
+        if (depth == 0 && (visibleSurf || calulateContributionEstimate)) {
             // Estimate BSDF's albedo
             // Define sample arrays _ucRho_ and _uRho_ for reflectance estimate
             constexpr int nRhoSamples = 16;
@@ -3888,8 +3938,10 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
                 Point2f(0.180888, 0.214174), Point2f(0.898579, 0.503897)};
 
             SampledSpectrum albedo = bsdf.rho(isect.wo, ucRho, uRho);
-
-            *visibleSurf = VisibleSurface(isect, albedo, lambda);
+            if(visibleSurf)
+                *visibleSurf = VisibleSurface(isect, albedo, lambda);
+            ced.albedo = albedo.ToRGB(lambda, *colorSpace);
+            ced.normal = isect.n;
         }
 
         // End path if maximum depth reached
@@ -3907,6 +3959,7 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         // Guiding - Check if we can use guiding. If so intialize the guiding distribution
         Float v = guideSettings.knnLookup ? sampler.Get1D(): -1.0f;
         gbsdf.init(&bsdf, ray, si, v);
+        adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
 
         if (depth == 1 && visibleSurf && guiding_field->GetIteration() > 0) {
             visibleSurf->guidingData.id = gbsdf.getId();
@@ -3949,11 +4002,18 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         if (!beta)
             break;
         // Possibly terminate the path with Russian roulette
-        SampledSpectrum rrBeta = beta * etaScale;
+        //SampledSpectrum rrBeta = beta * etaScale;
         // termination probability
+        // Todo: need to find a better solution for specular and near specular surfaces
         Float q = 0.f;
-        if (rrBeta.MaxComponentValue() < 1 && depth > minRRDepth) {
-            q = std::max<Float>(0, 1 - (rrBeta.MaxComponentValue() * rr_correction));
+        Float survivalProb = 1.f;
+        if (!guideRR) {
+            survivalProb = specularBounce ? 0.95 : StandardRussianRouletteSurvivalProbability(beta * rr_correction, etaScale);
+        } else {
+            survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
+        }
+        if (survivalProb < 1 && depth > minRRDepth) {
+            q = std::max<Float>(0, 1 - survivalProb);
             if (sampler.Get1D() < q)
                 break;
             beta /= 1 - q;
@@ -3964,6 +4024,16 @@ SampledSpectrum GuidedPathIntegrator::Li(RayDifferential ray, SampledWavelengths
         guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, 1.0f - q, lambda, colorSpace);
     }
     pathLength << depth;
+
+    if(calulateContributionEstimate)
+    {
+    #if defined(PBRT_RGB_RENDERING)
+        ced.color = L.ToRGB(lambda, *colorSpace);
+    #else
+        ced.color = sensor->ToSensorRGB(L, lambda);
+    #endif
+        contributionEstimate->Add(pPixel, ced);
+    }
 
     if (guideTraining)
     {
@@ -4034,6 +4104,10 @@ std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
     bool useNEE = parameters.GetOneBool("usenee", true);
     GuidingSettings settings;
     settings.enableGuiding = parameters.GetOneBool("enableguiding", true);
+
+    settings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
+    settings.guideRR = parameters.GetOneBool("rrguiding", false);
+
     settings.knnLookup = parameters.GetOneBool("knnlookup", true);
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
     settings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
@@ -4041,6 +4115,10 @@ std::unique_ptr<GuidedPathIntegrator> GuidedPathIntegrator::Create(
     settings.storeGuidingCache = parameters.GetOneBool("storeGuidingCache", false);
     settings.loadGuidingCache = parameters.GetOneBool("loadGuidingCache", false);
     settings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
+
+    settings.storeContributionEstimate = parameters.GetOneBool("storeContributionEstimate", false);
+    settings.loadContributionEstimate = parameters.GetOneBool("loadContributionEstimate", false);
+    settings.contributionEstimateFileName = parameters.GetOneString("contributionEstimateFileName", "");
 
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);
@@ -4137,7 +4215,7 @@ void GuidedVolPathIntegrator::PostProcessWave() {
     guiding_sampleStorage->Clear();
 }
 
-SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &lambda,
+SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
                                       Sampler sampler, ScratchBuffer &scratchBuffer,
                                       VisibleSurface *visibleSurf) const {
 

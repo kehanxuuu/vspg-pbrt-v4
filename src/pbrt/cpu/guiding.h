@@ -5,7 +5,9 @@
 #define PBRT_GUIDING_H
 
 
+#include <pbrt/denoiser.h>
 #include <pbrt/interaction.h>
+#include <pbrt/util/parallel.h>
 #include <openpgl/cpp/OpenPGL.h>
 
 #if defined(_MSC_VER)
@@ -29,6 +31,216 @@ inline Vector3f spectral_to_vec3(const SampledSpectrum& spec, const SampledWavel
     return Vector3f(specRGB[0], specRGB[1], specRGB[2]);
 #endif
 }
+
+
+    inline Float StandardRussianRouletteSurvivalProbability(const SampledSpectrum &beta, const Float etaScale){
+        return beta.MaxComponentValue() * etaScale;
+    }
+
+
+    inline Float GuidedRussianRouletteProbability(const SampledSpectrum &beta, const SampledSpectrum &adjoint, const SampledSpectrum &referenceEstimate){
+
+        //if(!adjoint.isValid() || !throughput.isValid()|| !referenceEstimate.isValid() ){
+        //    SLog(EInfo, "throughput: %s \t adjoint: %s \t referenceEstimate: %s",throughput.toString().c_str(), adjoint.toString().c_str(),referenceEstimate.toString().c_str());      
+        //}
+
+        //SAssert(throughput.isValid());
+        //Guiding2_Assert(adjoint.isValid());
+        //SAssert(referenceEstimate.isValid());
+
+        Float survivalProb = 1.0f;
+        if(adjoint.IsValid() && !adjoint.IsZero()){
+            const Float s = 5.0f;
+            // weight window center
+            SampledSpectrum Cww = referenceEstimate/adjoint;
+            Cww[0] = adjoint[0] > 0.f ? Cww[0]: 0.f;
+            Cww[1] = adjoint[1] > 0.f ? Cww[1]: 0.f;
+            Cww[2] = adjoint[2] > 0.f ? Cww[2]: 0.f;
+            /*
+            if( !Cww.IsValid()){
+                SLog(EInfo, "throughput: %s \t adjoint: %s \t referenceEstimate: %s",throughput.toString().c_str(), adjoint.toString().c_str(),referenceEstimate.toString().c_str());
+                SLog(EInfo, "Cww: %s", Cww.toString().c_str());
+            }
+            */
+            DCHECK(Cww.IsValid());
+            // weight window lower bound
+            SampledSpectrum min = 2.0f*Cww/(1.0f+s);
+            // weight window upper bound
+            //Spectrum max = s*min;
+            Float fbeta = beta.Average();
+            Float fmin = min.Average();
+            fmin = fmin>0 ? fmin : fbeta;
+            survivalProb = fbeta / fmin;
+            /*
+            if( std::isnan(survivalProb) || !std::isfinite(survivalProb)){
+                SLog(EInfo, "throughput: %s \t adjoint: %s \t referenceEstimate: %s",throughput.toString().c_str(), adjoint.toString().c_str(),referenceEstimate.toString().c_str());
+                SLog(EInfo, "survivalProb: %f, Cww: %s \t min: %s",survivalProb, Cww.toString().c_str(),min.toString().c_str());
+            }
+            */
+        }
+        DCHECK(std::isfinite(survivalProb) && !std::isnan(survivalProb));
+        survivalProb = std::max(0.1f, survivalProb);
+        return std::min(survivalProb, 1.0f);
+    }
+
+
+struct ContributionEstimate {
+    struct ContributionEstimateData {
+        RGB color;
+        Normal3f normal;
+        RGB albedo;
+    };
+    ContributionEstimate(Vector2i resolution): resolution(resolution){
+        int numPixels = resolution[0] * resolution[1];
+        rgbBuffer = new RGB[numPixels];
+        normalBuffer = new Normal3f[numPixels];
+        albedoBuffer = new RGB[numPixels];
+        resultBuffer = new RGB[numPixels];
+        sppBuffer = new float[numPixels];
+
+        for(int i = 0; i < numPixels; i++) {
+            rgbBuffer[i] = RGB(0.f,0.f,0.f);
+            normalBuffer[i] = Normal3f(0.f,0.f,0.f);
+            albedoBuffer[i] = RGB(0.f,0.f,0.f);
+            resultBuffer[i] = RGB(0.f,0.f,0.f);
+            sppBuffer[i] = 0.f;
+        }
+
+        denoiser = new OIDNDenoiser(resolution, true);
+    }
+
+    ContributionEstimate(std::string fileName){
+        Load(fileName);
+    }
+
+    void Add(Point2i pPixel, ContributionEstimateData sample){
+        int pIdx = pPixel.y * resolution.x + pPixel.x;
+        sppBuffer[pIdx] += 1.f;
+        Float alpha = 1.f / sppBuffer[pIdx];
+        rgbBuffer[pIdx] = (1.f - alpha) * rgbBuffer[pIdx] + alpha * sample.color;
+        normalBuffer[pIdx] = (1.f - alpha) * normalBuffer[pIdx] + alpha * sample.normal;
+        albedoBuffer[pIdx] = (1.f - alpha) * albedoBuffer[pIdx] + alpha * sample.albedo;
+    }
+
+    void Update() {
+        std::cout << "ContributionEstimate::Update()" << std::endl;
+        denoiser->Denoise(rgbBuffer, normalBuffer, albedoBuffer, resultBuffer);
+    }
+
+    SampledSpectrum GetContributionEstimate(Point2i pPixel) const {
+        int pIdx = pPixel.y * resolution.x + pPixel.x;
+        RGB rgbEst = resultBuffer[pIdx];
+        SampledSpectrum spec;
+        spec[0] = rgbEst[0];
+        spec[1] = rgbEst[1];
+        spec[2] = rgbEst[2];
+        return spec;
+    }
+
+    Float GetSPP(Point2i pPixel) const {
+        int pIdx = pPixel.y * resolution.x + pPixel.x;
+        return sppBuffer[pIdx];
+    }
+
+    void Store(std::string fileName) const {
+        PixelFormat format = PixelFormat::Float;
+        Point2i pMin = Point2i(0,0);
+        Point2i pMax = Point2i(resolution.x, resolution.y);
+        Bounds2i pixelBounds = Bounds2i(pMin, pMax);
+        Image image(format, Point2i(resolution),
+                {"R",
+                 "G",
+                 "B",
+                 "Color.R",
+                 "Color.G",
+                 "Color.B",
+                 "N.x",
+                 "N.y",
+                 "N.z",
+                 "Albedo.R",
+                 "Albedo.G",
+                 "Albedo.B",
+                 "spp",});
+        ImageChannelDesc rgbDesc = image.GetChannelDesc({"R", "G", "B"});
+        ImageChannelDesc colorDesc = image.GetChannelDesc({"Color.R", "Color.G", "Color.B"});
+        ImageChannelDesc normalDesc = image.GetChannelDesc({"N.x", "N.y", "N.z"});
+        ImageChannelDesc albedoDesc = image.GetChannelDesc({"Albedo.R", "Albedo.G", "Albedo.B"});
+        ImageChannelDesc sppDesc = image.GetChannelDesc({"spp"});
+
+        ParallelFor2D(pixelBounds, [&](Point2i p) {
+            int pIdx = p.y * resolution.x + p.x;
+        
+            RGB rgb = resultBuffer[pIdx];
+            RGB color = rgbBuffer[pIdx];
+            RGB normal = (RGB(normalBuffer[pIdx].x, normalBuffer[pIdx].y, normalBuffer[pIdx].z) + RGB(1.f, 1.f, 1.f)) * 0.5f;
+            RGB albedo = albedoBuffer[pIdx];
+            Float spp = sppBuffer[pIdx];
+
+            Point2i pOffset(p.x, p.y);
+            image.SetChannels(pOffset, rgbDesc, {rgb[0], rgb[1], rgb[2]});
+            image.SetChannels(pOffset, colorDesc, {color[0], color[1], color[2]});
+            image.SetChannels(pOffset, normalDesc, {normal[0], normal[1], normal[2]});
+            image.SetChannels(pOffset, albedoDesc, {albedo[0], albedo[1], albedo[2]});
+            image.SetChannels(pOffset, sppDesc, {spp});
+
+        });
+
+        image.Write(fileName);
+    }
+
+    void Load(std::string fileName) {
+        ImageAndMetadata imgAndMeta = Image::Read(fileName);
+
+        resolution = Vector2i(imgAndMeta.image.Resolution());
+
+        int numPixels = resolution[0] * resolution[1];
+        rgbBuffer = new RGB[numPixels];
+        normalBuffer = new Normal3f[numPixels];
+        albedoBuffer = new RGB[numPixels];
+        resultBuffer = new RGB[numPixels];
+        sppBuffer = new float[numPixels];
+
+        ImageChannelDesc rgbDesc = imgAndMeta.image.GetChannelDesc({"R", "G", "B"});
+        ImageChannelDesc colorDesc = imgAndMeta.image.GetChannelDesc({"Color.R", "Color.G", "Color.B"});
+        ImageChannelDesc normalDesc = imgAndMeta.image.GetChannelDesc({"N.x", "N.y", "N.z"});
+        ImageChannelDesc albedoDesc = imgAndMeta.image.GetChannelDesc({"Albedo.R", "Albedo.G", "Albedo.B"});
+        ImageChannelDesc sppDesc = imgAndMeta.image.GetChannelDesc({"spp"});
+
+        Point2i pMin = Point2i(0,0);
+        Point2i pMax = Point2i(resolution.x, resolution.y);
+        Bounds2i pixelBounds = Bounds2i(pMin, pMax);
+
+        ParallelFor2D(pixelBounds, [&](Point2i p) {
+            int pIdx = p.y * resolution.x + p.x;
+
+            Point2i pOffset(p.x, p.y);
+            ImageChannelValues rgb = imgAndMeta.image.GetChannels(pOffset, rgbDesc);
+            ImageChannelValues color = imgAndMeta.image.GetChannels(pOffset, colorDesc);
+            ImageChannelValues normal = imgAndMeta.image.GetChannels(pOffset, normalDesc);
+            ImageChannelValues albedo = imgAndMeta.image.GetChannels(pOffset, albedoDesc);
+            ImageChannelValues spp = imgAndMeta.image.GetChannels(pOffset, sppDesc);
+
+            resultBuffer[pIdx] = RGB(rgb[0], rgb[1], rgb[2]);
+            rgbBuffer[pIdx] = RGB(color[0], color[1], color[2]);
+            normalBuffer[pIdx] = Normal3f((normal[0] * 2.f) - 1.f, (normal[1] * 2.f) - 1.f, (normal[2] * 2.f) - 1.f);
+            albedoBuffer[pIdx] = RGB(albedo[0], albedo[1], albedo[2]);
+            sppBuffer[pIdx] = spp[0];
+
+        });
+    }
+
+private:
+    Vector2i resolution;
+
+    RGB *rgbBuffer;
+    Normal3f *normalBuffer;
+    RGB *albedoBuffer;
+    RGB *resultBuffer;
+    float *sppBuffer;
+
+    OIDNDenoiser* denoiser;
+
+};
 
 enum GuidingType{
     EGuideMIS = 0,
@@ -271,6 +483,44 @@ struct GuidedBSDF{
         return m_surfaceSamplingDistribution->GetId();
     }
 
+#ifdef OPENPGL_EF_RADIANCE_CACHES
+    SampledSpectrum IncomingRadiance(const Vector3f wiRender) const {
+        SampledSpectrum spec(0.f);
+        if (useGuiding){
+            pgl_vec3f pglWo = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
+            pgl_vec3f pglIncomingRad = m_surfaceSamplingDistribution->IncomingRadiance(pglWo);
+            spec[0] = pglIncomingRad.x;
+            spec[1] = pglIncomingRad.y;
+            spec[2] = pglIncomingRad.z;
+        }
+        return spec;
+    }
+
+    SampledSpectrum OutgoingRadiance(const Vector3f woRender) const {
+        SampledSpectrum spec(0.f);
+        if (useGuiding){
+            pgl_vec3f pglWi = openpgl::cpp::Vector3(woRender[0], woRender[1], woRender[2]);
+            pgl_vec3f pglOutgoingRad = m_surfaceSamplingDistribution->OutgoingRadiance(pglWi);
+            spec[0] = pglOutgoingRad.x;
+            spec[1] = pglOutgoingRad.y;
+            spec[2] = pglOutgoingRad.z;
+        }
+        return spec;
+    }
+
+    SampledSpectrum Irradiance(const Vector3f nRender) const {
+        SampledSpectrum spec(0.f);
+        if (useGuiding){
+            pgl_vec3f pglN = openpgl::cpp::Vector3(nRender[0], nRender[1], nRender[2]);
+            pgl_vec3f pglIrradiance = m_surfaceSamplingDistribution->Irradiance(pglN);
+            spec[0] = pglIrradiance.x;
+            spec[1] = pglIrradiance.y;
+            spec[2] = pglIrradiance.z;
+        }
+        return spec;
+    }
+#endif
+
 private:
     bool m_enableGuiding = true;
     float guidingProbability = 0.5f;
@@ -486,6 +736,55 @@ struct GuidedPhaseFunction{
     float MeanCosine() const {
         return m_phase->MeanCosine();
     }
+
+#ifdef OPENPGL_EF_RADIANCE_CACHES
+    SampledSpectrum IncomingRadiance(const Vector3f wiRender) const {
+        SampledSpectrum spec(0.f);
+        if (useGuiding){
+            pgl_vec3f pglWo = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
+            pgl_vec3f pglIncomingRad =  m_volumeSamplingDistribution->IncomingRadiance(pglWo);
+            spec[0] = pglIncomingRad.x;
+            spec[1] = pglIncomingRad.y;
+            spec[2] = pglIncomingRad.z;
+        }
+        return spec;
+    }
+
+    SampledSpectrum OutgoingRadiance(const Vector3f woRender) const {
+        SampledSpectrum spec(0.f);
+        if (useGuiding){
+            pgl_vec3f pglWi = openpgl::cpp::Vector3(woRender[0], woRender[1], woRender[2]);
+            pgl_vec3f pglOutgoingRad =  m_volumeSamplingDistribution->OutgoingRadiance(pglWi);
+            spec[0] = pglOutgoingRad.x;
+            spec[1] = pglOutgoingRad.y;
+            spec[2] = pglOutgoingRad.z;
+        }
+        return spec;
+    }
+
+    SampledSpectrum InscatteredRadiance(const Vector3f woRender, const Float meanCosine) const {
+        SampledSpectrum spec(0.f);
+        if (useGuiding){
+            pgl_vec3f pglWo = openpgl::cpp::Vector3(woRender[0], woRender[1], woRender[2]);
+            pgl_vec3f pglInscatteredRad =  m_volumeSamplingDistribution->InscatteredRadiance(pglWo, meanCosine);
+            spec[0] = pglInscatteredRad.x;
+            spec[1] = pglInscatteredRad.y;
+            spec[2] = pglInscatteredRad.z;
+        }
+        return spec;
+    }
+
+    SampledSpectrum Fluence() const {
+        SampledSpectrum spec(0.f);
+        if (useGuiding){
+            pgl_vec3f pglFluence =  m_volumeSamplingDistribution->Fluence();
+            spec[0] = pglFluence.x;
+            spec[1] = pglFluence.y;
+            spec[2] = pglFluence.z;
+        }
+        return spec;
+    }
+#endif
 
 private:
     bool m_enableGuiding = true;
