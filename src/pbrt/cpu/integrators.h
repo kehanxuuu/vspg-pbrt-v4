@@ -296,7 +296,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     SampledSpectrum SampleLd(const SurfaceInteraction &intr, const GuidedBSDF *bsdf,
                              SampledWavelengths &lambda, Sampler sampler) const;
 
-    const PixelSensor *sensor;
+    const PixelSensor *sensor {nullptr};
     
     // GuidedPathIntegrator Private Members
     int maxDepth;
@@ -304,7 +304,7 @@ class GuidedPathIntegrator : public RayIntegrator {
     bool useNEE {true};
     LightSampler lightSampler;
     bool regularize;
-    const RGBColorSpace *colorSpace;
+    const RGBColorSpace *colorSpace {nullptr};
 
     // Path Guiding
     GuidingSettings guideSettings;
@@ -315,9 +315,9 @@ class GuidedPathIntegrator : public RayIntegrator {
     ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>* guiding_threadSurfaceSamplingDistribution;
 
     openpgl::cpp::FieldConfig guiding_fieldConfig;
-    openpgl::cpp::SampleStorage* guiding_sampleStorage;
-    openpgl::cpp::Field* guiding_field;
-    openpgl::cpp::Device* guiding_device;
+    openpgl::cpp::SampleStorage* guiding_sampleStorage {nullptr};
+    openpgl::cpp::Field* guiding_field {nullptr};
+    openpgl::cpp::Device* guiding_device {nullptr};
     //ThreadLocal<Allocator> threadPathSegmentStorage;
 
     ContributionEstimate* contributionEstimate {nullptr};
@@ -394,6 +394,8 @@ class GuidedVolPathIntegrator : public RayIntegrator {
         bool enableGuiding {true};
         bool guideSurface {true};
         bool guideVolume {true};
+        bool guideRR {false};
+
         GuidingType surfaceGuidingType {EGuideRIS};
         GuidingType volumeGuidingType {EGuideRIS};
         float guideSurfaceProbability {0.5f};
@@ -404,6 +406,10 @@ class GuidedVolPathIntegrator : public RayIntegrator {
         bool storeGuidingCache {false};
         bool loadGuidingCache {false};
         std::string guidingCacheFileName {""};
+
+        bool storeContributionEstimate {false};
+        bool loadContributionEstimate {false};
+        std::string contributionEstimateFileName {""};
     };
   public:
     // VolPathIntegrator Public Methods
@@ -432,13 +438,15 @@ class GuidedVolPathIntegrator : public RayIntegrator {
                              const GuidedPhaseFunction *phase, SampledWavelengths &lambda, Sampler sampler,
                              SampledSpectrum inv_w_u) const;
 
+    const PixelSensor *sensor {nullptr};
+    
     // GuidedVolPathIntegrator Private Members
     int maxDepth;
     int minRRDepth;
     bool useNEE {true};
     LightSampler lightSampler;
     bool regularize;
-    const RGBColorSpace *colorSpace;
+    const RGBColorSpace *colorSpace {nullptr};
 
     // Path Guiding
     GuidingSettings guideSettings;
@@ -450,9 +458,15 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     ThreadLocal<openpgl::cpp::VolumeSamplingDistribution*>* guiding_threadVolumeSamplingDistribution;
 
     openpgl::cpp::FieldConfig guiding_fieldConfig;
-    openpgl::cpp::SampleStorage* guiding_sampleStorage;
-    openpgl::cpp::Field* guiding_field;
-    openpgl::cpp::Device* guiding_device;
+    openpgl::cpp::SampleStorage* guiding_sampleStorage {nullptr};
+    openpgl::cpp::Field* guiding_field {nullptr};
+    openpgl::cpp::Device* guiding_device {nullptr};
+
+    ContributionEstimate* contributionEstimate {nullptr};
+    bool contributionEstimateReady {false};
+    bool calulateContributionEstimate {false};
+    int contributionEstimateWave {0};
+    int waveCounter {0};
 };
 #endif
 

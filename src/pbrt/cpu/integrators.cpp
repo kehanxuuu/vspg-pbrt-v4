@@ -4140,68 +4140,97 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
         colorSpace(colorSpace),
         lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
         regularize(regularize) {
-            std::cout<< "GuidedVolPathIntegrator:" <<std::endl;
-            std::cout<< "\t maxDepth = " << maxDepth << std::endl;
-            std::cout<< "\t minRRDepth = " << minRRDepth << std::endl;
-            std::cout<< "\t useNEE = " << useNEE << std::endl;
-            std::cout<< "\t surfaceGuiding = " << guideSettings.guideSurface << std::endl;
-            std::cout<< "\t volumeGuiding = " << guideSettings.guideVolume << std::endl;
-            std::cout<< "\t surfaceGuidingType = " << guideSettings.surfaceGuidingType << std::endl;
-            std::cout<< "\t volumeGuidingType = " << guideSettings.volumeGuidingType << std::endl;
-            std::cout<< "\t loadGuidingCache = " << guideSettings.loadGuidingCache << std::endl;
-            std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl;
-            std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
-            std::cout<< "\t regularize = " << regularize << std::endl;
-        
-            guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
-            guiding_fieldConfig.Init(PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
+        std::cout<< "GuidedVolPathIntegrator:" <<std::endl;
+        std::cout<< "\t maxDepth = " << maxDepth << std::endl;
+        std::cout<< "\t minRRDepth = " << minRRDepth << std::endl;
+        std::cout<< "\t useNEE = " << useNEE << std::endl;
+        std::cout<< "\t surfaceGuiding = " << guideSettings.guideSurface << std::endl;
+        std::cout<< "\t volumeGuiding = " << guideSettings.guideVolume << std::endl;
+        std::cout<< "\t surfaceGuidingType = " << guideSettings.surfaceGuidingType << std::endl;
+        std::cout<< "\t volumeGuidingType = " << guideSettings.volumeGuidingType << std::endl;
+        std::cout<< "\t loadGuidingCache = " << guideSettings.loadGuidingCache << std::endl;
+        std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl;
+        std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
+        std::cout<< "\t regularize = " << regularize << std::endl;
+    
+        guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
+        guiding_fieldConfig.Init(PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
 
-            if (guideSettings.loadGuidingCache) {
-                if(FileExists(guideSettings.guidingCacheFileName)) {
-                    std::cout<< "GuidedVolPathIntegrator: loading guiding cache = "<< guideSettings.guidingCacheFileName <<std::endl;
-                    guiding_field = new openpgl::cpp::Field(guiding_device, guideSettings.guidingCacheFileName);
-                    guideTraining = false;
-                } else {
-                    guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
-                }
+        if (guideSettings.loadGuidingCache) {
+            if(FileExists(guideSettings.guidingCacheFileName)) {
+                std::cout<< "GuidedVolPathIntegrator: loading guiding cache = "<< guideSettings.guidingCacheFileName <<std::endl;
+                guiding_field = new openpgl::cpp::Field(guiding_device, guideSettings.guidingCacheFileName);
+                guideTraining = false;
             } else {
                 guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
             }
-            guiding_sampleStorage = new openpgl::cpp::SampleStorage();
+        } else {
+            guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
+        }
+        guiding_sampleStorage = new openpgl::cpp::SampleStorage();
 
-            guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
-            [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage();
-                    size_t maxPathSegments = this->maxDepth >= 1 ? this->maxDepth*2 : 30;
-                    pss->Reserve(maxPathSegments);
-                    pss->SetMaxDistance(guidingInfiniteLightDistance);
-                    return pss;});
+        guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
+        [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage(true);
+                size_t maxPathSegments = this->maxDepth >= 1 ? this->maxDepth*2 : 30;
+                pss->Reserve(maxPathSegments);
+                pss->SetMaxDistance(guidingInfiniteLightDistance);
+                return pss;});
 
-            guiding_threadSurfaceSamplingDistribution = new ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>(
-            [this]() { return new openpgl::cpp::SurfaceSamplingDistribution(guiding_field); });
+        guiding_threadSurfaceSamplingDistribution = new ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>(
+        [this]() { return new openpgl::cpp::SurfaceSamplingDistribution(guiding_field); });
 
-            guiding_threadVolumeSamplingDistribution = new ThreadLocal<openpgl::cpp::VolumeSamplingDistribution*>(
-            [this]() { return new openpgl::cpp::VolumeSamplingDistribution(guiding_field); });
+        guiding_threadVolumeSamplingDistribution = new ThreadLocal<openpgl::cpp::VolumeSamplingDistribution*>(
+        [this]() { return new openpgl::cpp::VolumeSamplingDistribution(guiding_field); });
+
+        Vector2i resolution = camera.GetFilm().PixelBounds().Diagonal();
+        sensor = camera.GetFilm().GetPixelSensor();
+
+        if(guideSettings.loadContributionEstimate) {
+            if(FileExists(guideSettings.contributionEstimateFileName)) {
+                contributionEstimate = new ContributionEstimate(guideSettings.contributionEstimateFileName);
+                contributionEstimateReady = true;
+                calulateContributionEstimate = false;
+            } else {
+                std::cout << "Warning: Contribution estimate file does not exists: contributionEstimateFileName = " << guideSettings.contributionEstimateFileName << std::endl;
             }
+        }
+
+        if(!contributionEstimateReady && (guideSettings.storeContributionEstimate || guideSettings.guideRR)){
+            calulateContributionEstimate = true;
+            contributionEstimate = new ContributionEstimate(resolution);
+            contributionEstimateReady = false;
+        }
+
+        if(guideSettings.guideRR) {
+            this->minRRDepth = 1;
+        }
+}
 
 
 GuidedVolPathIntegrator::~GuidedVolPathIntegrator() {
     //~RayIntegrator();
     if(guideSettings.storeGuidingCache) {
-        std::cout << "GuidedPathIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
+        std::cout << "GuidedVolPathIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
         guiding_field->Store(guideSettings.guidingCacheFileName);
     }
+
+    if(guideSettings.storeContributionEstimate){
+        contributionEstimate->Store(guideSettings.contributionEstimateFileName);
+    }
+
+    delete guiding_device;
+    delete guiding_sampleStorage;
+    delete guiding_field;
+    delete contributionEstimate;
 }
 
 void GuidedVolPathIntegrator::PostProcessWave() {
 
+    waveCounter++;
     std::cout << "GuidedVolPathIntegrator::PostProcessWave()" << std::endl;
-/* */
     if(guideTraining) {
         const size_t numValidSamples = guiding_sampleStorage->GetSizeSurface() + guiding_sampleStorage->GetSizeVolume();
         std::cout << "Guiding Iteration: "<< guiding_field->GetIteration() << "\t numValidSamples: " << numValidSamples << "\t surfaceSamples: " << guiding_sampleStorage->GetSizeSurface() << "\t volumeSamples: " << guiding_sampleStorage->GetSizeVolume() << std::endl;
-        /* */
-        //guiding_sampleStorage->Store("coronabench_sample_storage_small-" +  std::to_string(guiding_field->GetIteration()) + ".st");
-        //guiding_field->Store("coronabench_guiding_field_small-" +  std::to_string(guiding_field->GetIteration()) + ".gf");
         if(numValidSamples > 128) {
             guiding_field->Update(*guiding_sampleStorage);
             if(guiding_field->GetIteration() >= guideSettings.guideNumTrainingWaves) {
@@ -4209,10 +4238,15 @@ void GuidedVolPathIntegrator::PostProcessWave() {
             }
             guiding_sampleStorage->Clear();
         }
-        /**/
     }
-/**/
+
     guiding_sampleStorage->Clear();
+
+    if(calulateContributionEstimate && waveCounter == std::pow(2.0f, contributionEstimateWave)) {
+        contributionEstimate->Update();
+        contributionEstimateReady = true;
+        contributionEstimateWave++;
+    }
 }
 
 SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda,
@@ -4224,6 +4258,16 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
     openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution = guiding_threadVolumeSamplingDistribution->Get();
 
     openpgl::cpp::PathSegment* pathSegmentData = nullptr;
+
+    ContributionEstimate::ContributionEstimateData ced;
+
+    SampledSpectrum pixelContributionEstimate(0.f);
+    SampledSpectrum adjointEstimate(0.f);
+    bool guideRR = false;
+    if (guideSettings.guideRR && contributionEstimateReady) {
+        pixelContributionEstimate = contributionEstimate->GetContributionEstimate(pPixel);
+        guideRR = true;
+    }
 
     // Declare state variables for volumetric path sampling
     SampledSpectrum L(0.f), beta(1.f), r_u(1.f), r_l(1.f);
@@ -4298,6 +4342,13 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                         return false;
 
                     } else if (mode == 1) {
+                        
+                        if(depth==0) {
+                            SampledSpectrum albedo = mp.sigma_s / (mp.sigma_s + mp.sigma_a);
+                            ced.albedo = albedo.ToRGB(lambda, *colorSpace);
+                            ced.normal = Normal3f(-ray.d);
+                        }
+                        
                         // Handle scattering along ray path
                         // Stop path sampling if maximum depth has been reached
                         if (depth++ >= maxDepth) {
@@ -4322,6 +4373,8 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
 
                             Float v = sampler.Get1D();
                             gphase.init(&intr.phase, p, ray.d, v);
+                            adjointEstimate = gphase.InscatteredRadiance(-ray.d);
+
                             if(useNEE){
                                 SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, lambda, sampler, r_u);
                                 L += beta * Ld;
@@ -4444,7 +4497,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         add_direct_contribution = false;
 
         // Initialize _visibleSurf_ at first intersection
-        if (depth == 0 && visibleSurf) {
+        if (depth == 0 && (visibleSurf || calulateContributionEstimate)) {
             // Estimate BSDF's albedo
             // Define sample arrays _ucRho_ and _uRho_ for reflectance estimate
             constexpr int nRhoSamples = 16;
@@ -4464,7 +4517,10 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
 
             SampledSpectrum albedo = bsdf.rho(isect.wo, ucRho, uRho);
 
-            *visibleSurf = VisibleSurface(isect, albedo, lambda);
+            if(visibleSurf)
+                *visibleSurf = VisibleSurface(isect, albedo, lambda);
+            ced.albedo = albedo.ToRGB(lambda, *colorSpace);
+            ced.normal = isect.n;
         }
 
         // Terminate path if maximum depth reached
@@ -4481,6 +4537,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         // Guiding - Check if we can use guiding. If so intialize the guiding distribution
         Float v = sampler.Get1D();
         gbsdf.init(&bsdf, ray, si, v);
+        adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
 
         // Sample illumination from lights to find attenuated path contribution
         if (useNEE && IsNonSpecular(bsdf.Flags())) {
@@ -4598,18 +4655,34 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         // Possibly terminate volumetric path with Russian roulette
         if (!beta)
             break;
-        SampledSpectrum rrBeta = beta * etaScale / r_u.Average();
-                PBRT_DBG("%s\n",
-                 StringPrintf("etaScale %f -> rrBeta %s", etaScale, rrBeta).c_str());
+        //SampledSpectrum rrBeta = beta * etaScale / r_u.Average();
+        //        PBRT_DBG("%s\n",
+        //         StringPrintf("etaScale %f -> rrBeta %s", etaScale, rrBeta).c_str());
         Float q = 0.f;
-        if (rrBeta.MaxComponentValue() < 1 && depth > minRRDepth) {
-            q = std::max<Float>(0, 1 - (rrBeta.MaxComponentValue() * rr_correction));
+        Float survivalProb = 1.f;
+        if (!guideRR) {
+            survivalProb = specularBounce ? 0.95 : StandardRussianRouletteSurvivalProbability((beta / r_u.Average()) * rr_correction, etaScale);
+        } else {
+            survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
+        }
+        if (survivalProb < 1 && depth > minRRDepth) {
+            q = std::max<Float>(0, 1 - survivalProb);
             if (sampler.Get1D() < q)
                 break;
             beta /= 1 - q;
         }
         // Guiding - Add BSDF data to the current path segment
         guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, 1.0f - q, lambda, colorSpace);
+    }
+
+    if(calulateContributionEstimate)
+    {
+    #if defined(PBRT_RGB_RENDERING)
+        ced.color = L.ToRGB(lambda, *colorSpace);
+    #else
+        ced.color = sensor->ToSensorRGB(L, lambda);
+    #endif
+        contributionEstimate->Add(pPixel, ced);
     }
 
     if (guideTraining)
@@ -4757,6 +4830,8 @@ std::unique_ptr<GuidedVolPathIntegrator> GuidedVolPathIntegrator::Create(
     settings.knnLookup = parameters.GetOneBool("knnlookup", true);
     settings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
     settings.guideVolume = parameters.GetOneBool("volumeguiding", true);
+    settings.guideRR = parameters.GetOneBool("rrguiding", false);
+
     settings.enableGuiding = settings.guideSurface || settings.guideVolume;
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
     settings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
@@ -4766,6 +4841,10 @@ std::unique_ptr<GuidedVolPathIntegrator> GuidedVolPathIntegrator::Create(
     settings.storeGuidingCache = parameters.GetOneBool("storeGuidingCache", false);
     settings.loadGuidingCache = parameters.GetOneBool("loadGuidingCache", false);
     settings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
+
+    settings.storeContributionEstimate = parameters.GetOneBool("storeContributionEstimate", false);
+    settings.loadContributionEstimate = parameters.GetOneBool("loadContributionEstimate", false);
+    settings.contributionEstimateFileName = parameters.GetOneString("contributionEstimateFileName", "");
 
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);

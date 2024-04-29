@@ -22,13 +22,16 @@
 namespace pbrt {
 
 inline Vector3f spectral_to_vec3(const SampledSpectrum& spec, const SampledWavelengths &lambda, const RGBColorSpace &colorSpace){
-
+#if !defined(PBRT_RGB_RENDERING)
 #ifndef GUIDING_SPECTRAL_TO_VEC3_USE_RGB
     const float maxSpec = std::max(std::max(std::max(spec[0], spec[1]), spec[2]), spec[3]);
     return Vector3f(maxSpec, maxSpec, maxSpec);
 #else
     const RGB specRGB = spec.ToRGB(lambda, colorSpace);
     return Vector3f(specRGB[0], specRGB[1], specRGB[2]);
+#endif
+#else
+    return Vector3f(spec[0], spec[1], spec[2]);
 #endif
 }
 
@@ -762,11 +765,11 @@ struct GuidedPhaseFunction{
         return spec;
     }
 
-    SampledSpectrum InscatteredRadiance(const Vector3f woRender, const Float meanCosine) const {
+    SampledSpectrum InscatteredRadiance(const Vector3f woRender) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
             pgl_vec3f pglWo = openpgl::cpp::Vector3(woRender[0], woRender[1], woRender[2]);
-            pgl_vec3f pglInscatteredRad =  m_volumeSamplingDistribution->InscatteredRadiance(pglWo, meanCosine);
+            pgl_vec3f pglInscatteredRad =  m_volumeSamplingDistribution->InscatteredRadiance(pglWo, m_phase->MeanCosine());
             spec[0] = pglInscatteredRad.x;
             spec[1] = pglInscatteredRad.y;
             spec[2] = pglInscatteredRad.z;
