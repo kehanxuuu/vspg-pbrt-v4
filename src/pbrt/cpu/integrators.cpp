@@ -4351,7 +4351,6 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
         // Get BSDF and skip over medium boundaries
         BSDF bsdf = isect.GetBSDF(ray, lambda, camera, scratchBuffer, sampler);
         if (!bsdf) {
-            specularBounce = true;  // disable MIS if the indirect ray hits a light
             isect.SkipIntersection(&ray, si->tHit);
             continue;
         }
