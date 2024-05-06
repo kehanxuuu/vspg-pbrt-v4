@@ -3859,6 +3859,7 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
     float w = 0.0f;
     // Sample path from camera and accumulate radiance estimate
     while (true) {
+        Float survivalProb = 1.f;
         // Trace ray and find closest path vertex and its BSDF
         pstd::optional<ShapeIntersection> si = Intersect(ray);
         // Add emitted light at intersection point or from the environment
@@ -3961,6 +3962,10 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
         gbsdf.init(&bsdf, ray, si, v);
         adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
 
+        if (guideRR && depth > minRRDepth) {
+            survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
+        }
+
         if (depth == 1 && visibleSurf && guiding_field->GetIteration() > 0) {
             visibleSurf->guidingData.id = gbsdf.getId();
         }
@@ -3968,7 +3973,7 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
         // Sample direct illumination from the light sources
         if (useNEE && IsNonSpecular(bsdf.Flags())) {
             ++totalPaths;
-            SampledSpectrum Ld = SampleLd(isect, &gbsdf, lambda, sampler);
+            SampledSpectrum Ld = SampleLd(isect, &gbsdf, survivalProb, lambda, sampler);
             if (!Ld)
                 ++zeroRadiancePaths;
             L += beta * Ld;
@@ -3984,11 +3989,10 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
             break;
 
         rr_correction *= bs->pdf / bs->bsdfPdf;
-        misPDF = bs->misPdf;
+        misPDF = survivalProb * bs->misPdf;
         // Update path state variables after surface scattering
-        beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
-        
         bsdfWeight = bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
+        beta *= bsdfWeight;
 
         DCHECK(!IsInf(beta.y(lambda)));
         specularBounce = bs->IsSpecular();
@@ -4005,15 +4009,12 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
         //SampledSpectrum rrBeta = beta * etaScale;
         // termination probability
         // Todo: need to find a better solution for specular and near specular surfaces
-        Float q = 0.f;
-        Float survivalProb = 1.f;
-        if (!guideRR) {
+
+        if (!guideRR && depth > minRRDepth) {
             survivalProb = specularBounce ? 0.95 : StandardRussianRouletteSurvivalProbability(beta * rr_correction, etaScale);
-        } else {
-            survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
         }
         if (survivalProb < 1 && depth > minRRDepth) {
-            q = std::max<Float>(0, 1 - survivalProb);
+            Float q = std::max<Float>(0, 1 - survivalProb);
             if (sampler.Get1D() < q)
                 break;
             beta /= 1 - q;
@@ -4021,7 +4022,7 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
         }
 
         // Guiding - Add BSDF data to the current path segment
-        guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, 1.0f - q, lambda, colorSpace);
+        guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, survivalProb, lambda, colorSpace);
     }
     pathLength << depth;
 
@@ -4048,7 +4049,7 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
     return L;
 }
 
-SampledSpectrum GuidedPathIntegrator::SampleLd(const SurfaceInteraction &intr, const GuidedBSDF *bsdf,
+SampledSpectrum GuidedPathIntegrator::SampleLd(const SurfaceInteraction &intr, const GuidedBSDF *bsdf, const Float survivalProb,
                                          SampledWavelengths &lambda,
                                          Sampler sampler) const {
     // Initialize _LightSampleContext_ for light sampling
@@ -4085,7 +4086,7 @@ SampledSpectrum GuidedPathIntegrator::SampleLd(const SurfaceInteraction &intr, c
     if (IsDeltaLight(light.Type()))
         return ls->L * f / p_l;
     else {
-        Float p_b = bsdf->PDF(wo, wi);
+        Float p_b = survivalProb * bsdf->PDF(wo, wi);
         Float w_l = PowerHeuristic(1, p_l, 1, p_b);
         return w_l * ls->L * f / p_l;
     }
@@ -4287,6 +4288,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
     LightSampleContext prevIntrContext;
 
     while (true) {
+        Float survivalProb = 1.f;
         // Sample segment of volumetric scattering path
         PBRT_DBG("%s\n", StringPrintf("Path tracer depth %d, current L = %s, beta = %s\n",
                                       depth, L, beta)
@@ -4376,7 +4378,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                             adjointEstimate = gphase.InscatteredRadiance(-ray.d);
 
                             if(useNEE){
-                                SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, lambda, sampler, r_u);
+                                SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, survivalProb, lambda, sampler, r_u);
                                 L += beta * Ld;
 
                                 // Guiding - add scattered contribution from NEE
@@ -4438,7 +4440,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
 
         // Add emitted light at volume path vertex or from the environment
         if (!si) {
-            // Incorporate emission from infinite lights for escaped ray
+            // Accumulate contributions from infinite light sources
             for (const auto &light : infiniteLights) {
                 SampledSpectrum Le = light.Le(ray, lambda);
                 if (depth == 0 || specularBounce) {
@@ -4458,7 +4460,8 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
             break;
         }
         // Incorporate emission from surface hit by ray
-        SampledSpectrum Le = si->intr.Le(-ray.d, lambda);
+        SurfaceInteraction &isect = si->intr;
+        SampledSpectrum Le = isect.Le(-ray.d, lambda);
         if (Le) {
             // Add contribution of emission from intersected surface
             if (depth == 0 || specularBounce) {
@@ -4468,7 +4471,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                 add_direct_contribution = true;
             } else {
                 // Add surface light contribution using both PDFs with MIS
-                Light areaLight(si->intr.areaLight);
+                Light areaLight(isect.areaLight);
                 Float lightPDF = lightSampler.PMF(prevIntrContext, areaLight) *
                             areaLight.PDF_Li(prevIntrContext, ray.d, true);
                 r_l *= lightPDF;
@@ -4479,7 +4482,6 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
             }
         }
 
-        SurfaceInteraction &isect = si->intr;
         // Get BSDF and skip over medium boundaries
         BSDF bsdf = isect.GetBSDF(ray, lambda, camera, scratchBuffer, sampler);
         if (!bsdf) {
@@ -4539,16 +4541,25 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         gbsdf.init(&bsdf, ray, si, v);
         adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
 
+        if (guideRR && depth > minRRDepth) {
+            survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
+        }
+
+        if (depth == 1 && visibleSurf && guiding_field->GetIteration() > 0) {
+            visibleSurf->guidingData.id = gbsdf.getId();
+        }
+
         // Sample illumination from lights to find attenuated path contribution
         if (useNEE && IsNonSpecular(bsdf.Flags())) {
-            SampledSpectrum Ld = SampleLd(isect, &gbsdf, nullptr, lambda, sampler, r_u);
+            SampledSpectrum Ld = SampleLd(isect, &gbsdf, nullptr, survivalProb, lambda, sampler, r_u);
             L += beta * Ld;
             DCHECK(IsInf(L.y(lambda)) == false);
 
             // Guiding - add scattered contribution from NEE
             guiding_addScatteredDirectLight(pathSegmentData, Ld, lambda, colorSpace);
         }
-        
+        prevIntrContext = LightSampleContext(isect);        
+
         // Sample BSDF to get new path direction
         //Vector3f wo = isect.wo;  // Note isect.wo does an explicit Normalize step.
         Vector3f wo = -ray.d; // Use -ray.d to be on par to GuidedPath
@@ -4560,14 +4571,13 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         rr_correction *= bs->pdf / bs->bsdfPdf;
         misPDF = bs->misPdf;
         // Update _beta_ and rescaled path probabilities for BSDF scattering
-        beta *= bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
+        bsdfWeight = bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
+        beta *= bsdfWeight;
         //if (bs->pdfIsProportional)
         //    r_l = r_u / bsdf.PDF(wo, bs->wi);
         //else
         //    r_l = r_u / bs->pdf;
         r_l = r_u / bs->misPdf;
-
-        bsdfWeight = bs->f * AbsDot(bs->wi, isect.shading.n) / bs->pdf;
 
         PBRT_DBG("%s\n", StringPrintf("Sampled BSDF, f = %s, pdf = %f -> beta = %s",
                                       bs->f, bs->pdf, beta)
@@ -4578,8 +4588,6 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         anyNonSpecularBounces |= !bs->IsSpecular();
         if (bs->IsTransmission())
             etaScale *= Sqr(bs->eta);
-        prevIntrContext = LightSampleContext(isect);
-
         ray = isect.SpawnRay(ray, bsdf, bs->wi, bs->flags, bs->eta);
 
         // Account for attenuated subsurface scattering, if applicable
@@ -4658,22 +4666,20 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         //SampledSpectrum rrBeta = beta * etaScale / r_u.Average();
         //        PBRT_DBG("%s\n",
         //         StringPrintf("etaScale %f -> rrBeta %s", etaScale, rrBeta).c_str());
-        Float q = 0.f;
-        Float survivalProb = 1.f;
-        if (!guideRR) {
+        if (!guideRR && depth > minRRDepth) {
             survivalProb = specularBounce ? 0.95 : StandardRussianRouletteSurvivalProbability((beta / r_u.Average()) * rr_correction, etaScale);
-        } else {
-            survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
         }
         if (survivalProb < 1 && depth > minRRDepth) {
-            q = std::max<Float>(0, 1 - survivalProb);
+            Float q = std::max<Float>(0, 1 - survivalProb);
             if (sampler.Get1D() < q)
                 break;
             beta /= 1 - q;
         }
         // Guiding - Add BSDF data to the current path segment
-        guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, 1.0f - q, lambda, colorSpace);
+        guiding_addSurfaceData(pathSegmentData, bsdfWeight, bs->wi, bs->eta, bs->sampledRoughness, bs->pdf, survivalProb, lambda, colorSpace);
     }
+
+    pathLength << depth;
 
     if(calulateContributionEstimate)
     {
@@ -4698,8 +4704,8 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
     return L;
 }
 
-SampledSpectrum GuidedVolPathIntegrator::SampleLd(const Interaction &intr, const GuidedBSDF *bsdf,
-                                            const GuidedPhaseFunction *phase, SampledWavelengths &lambda, Sampler sampler,
+SampledSpectrum GuidedVolPathIntegrator::SampleLd(const Interaction &intr, const GuidedBSDF *bsdf, const GuidedPhaseFunction *phase,
+                                            const Float survivalProb, SampledWavelengths &lambda, Sampler sampler,
                                             SampledSpectrum r_p) const {
     // Estimate light-sampled direct illumination at _intr_
     // Initialize _LightSampleContext_ for volumetric light sampling
@@ -4738,14 +4744,14 @@ SampledSpectrum GuidedVolPathIntegrator::SampleLd(const Interaction &intr, const
     if (bsdf) {
         // Update _f_hat_ and _scatterPDF_ accounting for the BSDF
         f_hat = bsdf->f(wo, wi) * AbsDot(wi, intr.AsSurface().shading.n);
-        scatterPDF = bsdf->PDF(wo, wi);
+        scatterPDF = survivalProb * bsdf->PDF(wo, wi);
 
     } else {
         // Update _f_hat_ and _scatterPDF_ accounting for the phase function
         CHECK(intr.IsMediumInteraction());
         //PhaseFunction phase = intr.AsMedium().phase;
         f_hat = SampledSpectrum(phase->p(wo, wi));
-        scatterPDF = phase->PDF(wo, wi);
+        scatterPDF = survivalProb * phase->PDF(wo, wi);
     }
     if (!f_hat)
         return SampledSpectrum(0.f);
