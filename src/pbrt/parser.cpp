@@ -975,8 +975,9 @@ void parse(ParserTarget *target, std::unique_ptr<Tokenizer> t) {
         case 'W':
             if (tok->token == "WorldBegin")
                 target->WorldBegin(tok->loc);
-            else if (tok->token == "WorldEnd" && formatting)
-                ;  // just swallow it
+            else if (tok->token == "WorldEnd" /*&& formatting*/)
+                target->WorldEnd(tok->loc);
+                //;  // just swallow it
             else
                 syntaxError(*tok);
             break;
@@ -1263,6 +1264,10 @@ void FormattingParserTarget::MediumInterface(const std::string &insideName,
 
 void FormattingParserTarget::WorldBegin(FileLoc loc) {
     Printf("\n\nWorldBegin\n\n");
+}
+
+void FormattingParserTarget::WorldEnd(FileLoc loc) {
+    Printf("\n\nWorldEnd\n\n");
 }
 
 void FormattingParserTarget::AttributeBegin(FileLoc loc) {

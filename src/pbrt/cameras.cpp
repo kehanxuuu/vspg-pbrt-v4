@@ -90,6 +90,12 @@ void Camera::InitMetadata(ImageMetadata *metadata) const {
     return DispatchCPU(init);
 }
 
+
+void Camera::SetMedium(Medium medium) {
+    auto setMedium = [&](auto ptr) { return ptr->SetMedium(medium); };
+    return DispatchCPU(setMedium);
+}
+
 std::string Camera::ToString() const {
     if (!ptr())
         return "(nullptr)";
