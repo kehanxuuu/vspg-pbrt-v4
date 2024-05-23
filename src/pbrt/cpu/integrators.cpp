@@ -45,6 +45,8 @@
 
 #include <iostream>
 
+//#define VOLUME_ABSORB
+
 namespace pbrt {
 
 STAT_COUNTER("Integrator/Camera rays traced", nCameraRays);
@@ -1999,6 +2001,7 @@ int RandomWalk(const Integrator &integrator, SampledWavelengths &lambda,
                 [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj,
                     SampledSpectrum T_maj) {
                     // Compute medium event probabilities for interaction
+#if defined(VOLUME_ABSORB)
                     Float pAbsorb = mp.sigma_a[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                     Float pScatter = mp.sigma_s[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                     Float pNull = std::max<Float>(0, 1 - pAbsorb - pScatter);
@@ -2012,8 +2015,24 @@ int RandomWalk(const Integrator &integrator, SampledWavelengths &lambda,
                         return false;
 
                     } else if (mode == 1) {
+#else
+                    SampledSpectrum sigma_t = mp.sigma_s + mp.sigma_a;
+                    SampledSpectrum albedo = mp.sigma_s / sigma_t;
+                    Float pScatter = sigma_t[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
+                    Float pNull = std::max<Float>(0, 1 - pScatter);
+
+                    CHECK_GE(1 - pScatter, -1e-6);
+                    // Sample medium scattering event type and update path
+                    Float um = rng.Uniform<Float>();
+                    int mode = SampleDiscrete({pScatter, pNull}, um);
+                    if (mode == 0) {
+#endif
                         // Handle scattering for _RandomWalk()_ ray
+#if defined(VOLUME_ABSORB)
                         beta *= T_maj * mp.sigma_s / (T_maj[lambda.ChannelIdx()] * mp.sigma_s[lambda.ChannelIdx()]);
+#else
+                        beta *= T_maj * mp.sigma_s / (T_maj[lambda.ChannelIdx()] * sigma_t[lambda.ChannelIdx()]);
+#endif
                         // Record medium interaction in _path_ and compute forward density
                         MediumInteraction intr(p, -ray.d, ray.time, ray.medium, mp.phase);
                         vertex = Vertex::CreateMedium(intr, beta, pdfFwd, prev);
@@ -4330,6 +4349,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                     }
 
                     // Compute medium event probabilities for interaction
+#if defined(VOLUME_ABSORB)
                     Float pAbsorb = mp.sigma_a[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                     Float pScatter = mp.sigma_s[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                     Float pNull = std::max<Float>(0, 1 - pAbsorb - pScatter);
@@ -4344,6 +4364,18 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                         return false;
 
                     } else if (mode == 1) {
+#else
+                    SampledSpectrum sigma_t = mp.sigma_s + mp.sigma_a;
+                    SampledSpectrum albedo = mp.sigma_s / sigma_t;
+                    Float pScatter = sigma_t[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
+                    Float pNull = std::max<Float>(0, 1 - pScatter);
+
+                    CHECK_GE(1 - pScatter, -1e-6);
+                    // Sample medium scattering event type and update path
+                    Float um = rng.Uniform<Float>();
+                    int mode = SampleDiscrete({pScatter, pNull}, um);
+                    if (mode == 0) {
+#endif
                         
                         if(depth==0) {
                             SampledSpectrum albedo = mp.sigma_s / (mp.sigma_s + mp.sigma_a);
@@ -4359,10 +4391,15 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                         }
 
                         // Update _beta_ and _r_u_ for real-scattering event
+#if defined(VOLUME_ABSORB)
                         Float pdf = T_maj[lambda.ChannelIdx()] * mp.sigma_s[lambda.ChannelIdx()];
                         beta *= T_maj * mp.sigma_s / pdf;
                         r_u *= T_maj * mp.sigma_s / pdf;
-
+#else
+                        Float pdf = T_maj[lambda.ChannelIdx()] * sigma_t[lambda.ChannelIdx()];
+                        beta *= T_maj * mp.sigma_s / pdf;
+                        r_u *= T_maj * sigma_t / pdf;
+#endif
                         transmittanceWeight *= (T_maj * mp.sigma_s) / pdf;
                         guiding_addTransmittanceWeight(pathSegmentData, transmittanceWeight, lambda, colorSpace);
                         pathSegmentData = guiding_newVolumePathSegment(pathSegmentStorage, p, -ray.d);
