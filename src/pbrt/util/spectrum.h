@@ -679,7 +679,7 @@ class RGBUnboundedSpectrum {
 #if !defined(PBRT_RGB_RENDERING)
         return scale * rsp.MaxValue();
 #else
-        return std::max(rgb[0], std::max(rgb[1], rgb[2]));
+        return rgb.MaxValue();
 #endif
     }
 
@@ -734,12 +734,20 @@ class RGBUnboundedSpectrum {
 class RGBIlluminantSpectrum {
   public:
     // RGBIlluminantSpectrum Public Methods
-    RGBIlluminantSpectrum() = default;
+    PBRT_CPU_GPU
+    RGBIlluminantSpectrum() {};
+    PBRT_CPU_GPU
+    RGBIlluminantSpectrum(const RGBIlluminantSpectrum &s) {};
+    PBRT_CPU_GPU
+    ~RGBIlluminantSpectrum() {};
     PBRT_CPU_GPU
     RGBIlluminantSpectrum(const RGBColorSpace &cs, RGB rgb);
 #if defined(PBRT_RGB_RENDERING)
     PBRT_CPU_GPU
-    RGBIlluminantSpectrum(RGBUnboundedSpectrum s): rgb(s.GetRGB()) {}
+    RGBIlluminantSpectrum(const RGBUnboundedSpectrum &s): rgb(s.GetRGB()) {}
+
+    PBRT_CPU_GPU
+    RGBIlluminantSpectrum(const RGBIlluminantSpectrum &s, Allocator alloc);
 
     PBRT_CPU_GPU
     RGBIlluminantSpectrum(const RGBColorSpace &cs, Spectrum spec);
@@ -767,7 +775,7 @@ class RGBIlluminantSpectrum {
             return 0;
         return scale * rsp.MaxValue() * illuminant->MaxValue();
 #else
-        return std::max(rgb[0], std::max(rgb[1], rgb[2]));
+        return rgb.MaxValue();
 #endif
     }
 #if !defined(PBRT_RGB_RENDERING)
@@ -809,6 +817,7 @@ class RGBIlluminantSpectrum {
     std::string ToString() const;
 
   private:
+    friend struct std::hash<pbrt::RGBIlluminantSpectrum>;
     // RGBIlluminantSpectrum Private Members
 #if !defined(PBRT_RGB_RENDERING)
     Float scale;
@@ -994,6 +1003,17 @@ struct hash<pbrt::DenselySampledSpectrum> {
         return pbrt::HashBuffer(s.values.data(), s.values.size());
     }
 };
+
+#if defined(PBRT_RGB_RENDERING)
+template <>
+struct hash<pbrt::RGBIlluminantSpectrum> {
+    PBRT_CPU_GPU
+    size_t operator()(const pbrt::RGBIlluminantSpectrum &s) const {
+        float rgb[] = {s.rgb.r, s.rgb.g, s.rgb.b};
+        return pbrt::HashBuffer(rgb, 3);
+    }
+};
+#endif
 
 }  // namespace std
 

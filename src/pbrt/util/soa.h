@@ -139,6 +139,7 @@ struct SOA<SampledWavelengths> {
             lambda1 = alloc.allocate_object<Float>(nAlloc);
             pdf1 = alloc.allocate_object<Float>(nAlloc);
         }
+        channelIdx1 = alloc.allocate_object<int>(nAlloc);
     }
     SOA &operator=(const SOA &s) {
         nAlloc = s.nAlloc;
@@ -146,14 +147,15 @@ struct SOA<SampledWavelengths> {
         pdf4 = s.pdf4;
         lambda1 = s.lambda1;
         pdf1 = s.pdf1;
+        channelIdx1 = s.channelIdx1;
         return *this;
     }
 
     PBRT_CPU_GPU
-    SampledWavelengths operator[](int i) const {
+    SampledWavelengths operator[](int idx) const {
         SampledWavelengths l;
         if constexpr ((NSpectrumSamples % 4) == 0) {
-            int offset = n4 * i;
+            int offset = n4 * idx;
             for (int i = 0; i < n4; ++i, ++offset) {
                 DCHECK_LT(offset, nAlloc);
                 Float4 l4 = Load4(lambda4 + offset);
@@ -163,12 +165,14 @@ struct SOA<SampledWavelengths> {
                     l.pdf[4 * i + j] = p4.v[j];
                 }
             }
+            l.channelIdx = channelIdx1[idx];
         } else {
-            int offset = NSpectrumSamples * i;
+            int offset = NSpectrumSamples * idx;
             for (int i = 0; i < NSpectrumSamples; ++i)
                 l.lambda[i] = lambda1[offset + i];
             for (int i = 0; i < NSpectrumSamples; ++i)
                 l.pdf[i] = pdf1[offset + i];
+            l.channelIdx = channelIdx1[idx];
         }
         return l;
     }
@@ -189,12 +193,14 @@ struct SOA<SampledWavelengths> {
                     Store4(soa->pdf4 + offset, {s.pdf[4 * i], s.pdf[4 * i + 1],
                                                 s.pdf[4 * i + 2], s.pdf[4 * i + 3]});
                 }
+                soa->channelIdx1[index] = s.channelIdx;
             } else {
                 int offset = index * NSpectrumSamples;
                 for (int i = 0; i < NSpectrumSamples; ++i)
                     soa->lambda1[offset + i] = s.lambda[i];
                 for (int i = 0; i < NSpectrumSamples; ++i)
                     soa->pdf1[offset + i] = s.pdf[i];
+                soa->channelIdx1[offset] = s.channelIdx;
             }
         }
 
@@ -218,6 +224,7 @@ struct SOA<SampledWavelengths> {
     Float4 *PBRT_RESTRICT pdf4 = nullptr;
     Float *PBRT_RESTRICT lambda1 = nullptr;
     Float *PBRT_RESTRICT pdf1 = nullptr;
+    int *PBRT_RESTRICT channelIdx1 = nullptr;
 };
 
 #include "pbrt_soa.h"

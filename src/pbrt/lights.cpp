@@ -108,7 +108,7 @@ const DenselySampledSpectrum *LightBase::LookupSpectrum(Spectrum s) {
 InternCache<RGBIlluminantSpectrum> *LightBase::spectrumCache;
 
 const RGBIlluminantSpectrum *LightBase::LookupSpectrum(Spectrum s) {
-/*  
+  
     // Initialize _spectrumCache_ on first call
     static std::mutex mutex;
     mutex.lock();
@@ -124,9 +124,7 @@ const RGBIlluminantSpectrum *LightBase::LookupSpectrum(Spectrum s) {
     auto create = [](Allocator alloc, const RGBIlluminantSpectrum &s) {
         return alloc.new_object<RGBIlluminantSpectrum>(s, alloc);
     };
-    return spectrumCache->Lookup(RGBIlluminantSpectrum(s), create);
-*/
-    return new RGBIlluminantSpectrum(s.ToRGBUnbounded(*colorSpace));
+    return spectrumCache->Lookup(s.ToRGBUnbounded(*colorSpace), create);
 }
 
 #endif

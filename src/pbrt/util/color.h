@@ -145,6 +145,11 @@ class RGB {
         return b;
     }
 
+    PBRT_CPU_GPU
+    Float MaxValue() const {
+        return std::max(r, std::max(g, b));
+    }
+    
     std::string ToString() const;
 
     // RGB Public Members

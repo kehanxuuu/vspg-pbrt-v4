@@ -305,6 +305,11 @@ PBRT_CPU_GPU RGBIlluminantSpectrum::RGBIlluminantSpectrum(const RGBColorSpace &c
 }
 
 #if defined(PBRT_RGB_RENDERING)
+PBRT_CPU_GPU RGBIlluminantSpectrum::RGBIlluminantSpectrum(const RGBIlluminantSpectrum &s, Allocator alloc)
+{
+    this->rgb = s.rgb;
+}
+
 PBRT_CPU_GPU RGBUnboundedSpectrum RGBIlluminantSpectrum::ToRGBUnbounded(const RGBColorSpace &cs) const {
     return RGBUnboundedSpectrum(cs, rgb);
 }

@@ -544,8 +544,13 @@ void WavefrontPathIntegrator::HandleEmissiveIntersection() {
             SampledSpectrum Le = w.areaLight.L(w.p, w.n, w.uv, w.wo, w.lambda);
             if (!Le)
                 return;
+#if !defined(PBRT_RGB_RENDERING)
             PBRT_DBG("Got Le %f %f %f %f from hit area light at depth %d\n", Le[0], Le[1],
                      Le[2], Le[3], w.depth);
+#else
+            PBRT_DBG("Got Le %f %f %f from hit area light at depth %d\n", Le[0], Le[1],
+                     Le[2], w.depth);
+#endif
 
             // Compute area light's weighted radiance contribution to the path
             SampledSpectrum L(0.f);
@@ -563,8 +568,13 @@ void WavefrontPathIntegrator::HandleEmissiveIntersection() {
                 L = w.beta * Le / (r_u + r_l).Average();
             }
 
+#if !defined(PBRT_RGB_RENDERING)
             PBRT_DBG("Added L %f %f %f %f for pixel index %d\n", L[0], L[1], L[2], L[3],
                      w.pixelIndex);
+#else
+            PBRT_DBG("Added L %f %f %f for pixel index %d\n", L[0], L[1], L[2],
+                     w.pixelIndex);
+#endif
 
             // Update _L_ in _PixelSampleState_ for area light's radiance
             L += pixelSampleState.L[w.pixelIndex];
