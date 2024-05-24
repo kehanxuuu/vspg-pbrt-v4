@@ -304,11 +304,11 @@ class SampledWavelengths {
     // SampledWavelengths Public Methods
     PBRT_CPU_GPU
     bool operator==(const SampledWavelengths &swl) const {
-        return lambda == swl.lambda && pdf == swl.pdf;
+        return lambda == swl.lambda && pdf == swl.pdf && channelIdx == swl.channelIdx;
     }
     PBRT_CPU_GPU
     bool operator!=(const SampledWavelengths &swl) const {
-        return lambda != swl.lambda || pdf != swl.pdf;
+        return lambda != swl.lambda || pdf != swl.pdf || channelIdx != swl.channelIdx;
     }
 
     std::string ToString() const;
@@ -332,6 +332,11 @@ class SampledWavelengths {
         for (int i = 0; i < NSpectrumSamples; ++i)
             swl.pdf[i] = 1 / (lambda_max - lambda_min);
 
+#if !defined(PBRT_RGB_RENDERING)
+        swl.channelIdx = 0;
+#else
+        swl.channelIdx = std::min<int>((int)std::floor(u * 3), 2);
+#endif
         return swl;
     }
 
@@ -372,13 +377,24 @@ class SampledWavelengths {
             swl.lambda[i] = SampleVisibleWavelengths(up);
             swl.pdf[i] = VisibleWavelengthsPDF(swl.lambda[i]);
         }
+#if !defined(PBRT_RGB_RENDERING)
+        swl.channelIdx = 0;
+#else
+        swl.channelIdx = std::min<int>((int)std::floor(u * 3), 2);
+#endif
         return swl;
+    }
+
+    PBRT_CPU_GPU
+    int ChannelIdx() const{
+        return channelIdx;
     }
 
   private:
     // SampledWavelengths Private Members
     friend struct SOA<SampledWavelengths>;
     pstd::array<Float, NSpectrumSamples> lambda, pdf;
+    int channelIdx;
 };
 
 // Spectrum Definitions

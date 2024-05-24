@@ -244,7 +244,7 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(MaterialEvalQueue *evalQue
                             ray, w.depth + 1, ctx, beta, r_u, r_l, lambda,
                             etaScale, bsdfSample->IsSpecular(), anyNonSpecularBounces,
                             w.pixelIndex);
-
+#if !defined(PBRT_RGB_RENDERING)
                         PBRT_DBG(
                             "Spawned indirect ray at depth %d from w.index %d. "
                             "Specular %d beta %f %f %f %f r_u %f %f %f %f r_l %f "
@@ -255,6 +255,17 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(MaterialEvalQueue *evalQue
                             r_l[3], SafeDiv(beta, r_u)[0],
                             SafeDiv(beta, r_u)[1], SafeDiv(beta, r_u)[2],
                             SafeDiv(beta, r_u)[3]);
+#else
+                        PBRT_DBG(
+                            "Spawned indirect ray at depth %d from w.index %d. "
+                            "Specular %d beta %f %f %f r_u %f %f %f r_l %f "
+                            "%f %f beta/r_u %f %f %f\n",
+                            w.depth + 1, w.pixelIndex, int(bsdfSample->IsSpecular()),
+                            beta[0], beta[1], beta[2], r_u[0], r_u[1],
+                            r_u[2], r_l[0], r_l[1], r_l[2],
+                            SafeDiv(beta, r_u)[0],
+                            SafeDiv(beta, r_u)[1], SafeDiv(beta, r_u)[2]);
+#endif
                     }
                 }
             }
@@ -286,6 +297,7 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(MaterialEvalQueue *evalQue
 
                 // Compute path throughput and path PDFs for light sample
                 SampledSpectrum beta = w.beta * f * AbsDot(wi, ns);
+#if !defined(PBRT_RGB_RENDERING)
                 PBRT_DBG("w.beta %f %f %f %f f %f %f %f %f dot %f\n", w.beta[0],
                          w.beta[1], w.beta[2], w.beta[3], f[0], f[1], f[2], f[3],
                          AbsDot(wi, ns));
@@ -295,7 +307,17 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(MaterialEvalQueue *evalQue
                     "%f ls.pdf %f\n",
                     w.pixelIndex, w.depth, beta[0], beta[1], beta[2], beta[3], f[0], f[1],
                     f[2], f[3], ls->L[0], ls->L[1], ls->L[2], ls->L[3], ls->pdf);
+#else
+                PBRT_DBG("w.beta %f %f %f f %f %f %f dot %f\n", w.beta[0],
+                         w.beta[1], w.beta[2], f[0], f[1], f[2],
+                         AbsDot(wi, ns));
 
+                PBRT_DBG(
+                    "me index %d depth %d beta %f %f %f f %f %f %f ls.L %f %f %f "
+                    "ls.pdf %f\n",
+                    w.pixelIndex, w.depth, beta[0], beta[1], beta[2], f[0], f[1],
+                    f[2], ls->L[0], ls->L[1], ls->L[2], ls->pdf);
+#endif
                 Float lightPDF = ls->pdf * sampledLight->p;
                 // This causes r_u to be zero for the shadow ray, so that
                 // part of MIS just becomes a no-op.
@@ -314,7 +336,7 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(MaterialEvalQueue *evalQue
 
                 shadowRayQueue->Push(ShadowRayWorkItem{ray, 1 - ShadowEpsilon, lambda, Ld,
                                                        r_u, r_l, w.pixelIndex});
-
+#if !defined(PBRT_RGB_RENDERING)
                 PBRT_DBG("w.index %d spawned shadow ray depth %d Ld %f %f %f %f "
                          "new beta %f %f %f %f beta/uni %f %f %f %f Ld/uni %f %f %f %f\n",
                          w.pixelIndex, w.depth, Ld[0], Ld[1], Ld[2], Ld[3], beta[0],
@@ -323,6 +345,15 @@ void WavefrontPathIntegrator::EvaluateMaterialAndBSDF(MaterialEvalQueue *evalQue
                          SafeDiv(beta, r_u)[3], SafeDiv(Ld, r_u)[0],
                          SafeDiv(Ld, r_u)[1], SafeDiv(Ld, r_u)[2],
                          SafeDiv(Ld, r_u)[3]);
+#else
+                PBRT_DBG("w.index %d spawned shadow ray depth %d Ld %f %f %f "
+                         "new beta %f %f %f beta/uni %f %f %f Ld/uni %f %f %f\n",
+                         w.pixelIndex, w.depth, Ld[0], Ld[1], Ld[2], beta[0],
+                         beta[1], beta[2], SafeDiv(beta, r_u)[0],
+                         SafeDiv(beta, r_u)[1], SafeDiv(beta, r_u)[2],
+                         SafeDiv(Ld, r_u)[0],
+                         SafeDiv(Ld, r_u)[1], SafeDiv(Ld, r_u)[2]);
+#endif
             }
         });
 }

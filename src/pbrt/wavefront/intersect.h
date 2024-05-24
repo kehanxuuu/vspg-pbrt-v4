@@ -205,7 +205,7 @@ inline PBRT_CPU_GPU void TraceTransmittance(ShadowRayWorkItem sr,
                         ClampZero(sigma_maj - mp.sigma_a - mp.sigma_s);
 
                     // ratio-tracking: only evaluate null scattering
-                    Float pr = T_maj[0] * sigma_maj[0];
+                    Float pr = T_maj[lambda.ChannelIdx()] * sigma_maj[lambda.ChannelIdx()];
                     T_ray *= T_maj * sigma_n / pr;
                     r_l *= T_maj * sigma_maj / pr;
                     r_u *= T_maj * sigma_n / pr;
@@ -219,7 +219,7 @@ inline PBRT_CPU_GPU void TraceTransmittance(ShadowRayWorkItem sr,
                         else
                             T_ray /= 1 - q;
                     }
-
+#if !defined(PBRT_RGB_RENDERING)
                     PBRT_DBG(
                         "T_maj %f %f %f %f sigma_n %f %f %f %f sigma_maj %f %f %f %f\n",
                         T_maj[0], T_maj[1], T_maj[2], T_maj[3], sigma_n[0], sigma_n[1],
@@ -229,15 +229,24 @@ inline PBRT_CPU_GPU void TraceTransmittance(ShadowRayWorkItem sr,
                         "T_ray %f %f %f %f r_l %f %f %f %f r_u %f %f %f %f\n",
                         T_ray[0], T_ray[1], T_ray[2], T_ray[3], r_l[0], r_l[1],
                         r_l[2], r_l[3], r_u[0], r_u[1], r_u[2], r_u[3]);
-
+#else
+                    PBRT_DBG(
+                        "T_maj %f %f %f sigma_n %f %f %f sigma_maj %f %f %f\n",
+                        T_maj[0], T_maj[1], T_maj[2], sigma_n[0], sigma_n[1],
+                        sigma_n[2], sigma_maj[0], sigma_maj[1], sigma_maj[2]);
+                    PBRT_DBG(
+                        "T_ray %f %f %f r_l %f %f %f r_u %f %f %f\n",
+                        T_ray[0], T_ray[1], T_ray[2] r_l[0], r_l[1],
+                        r_l[2], r_u[0], r_u[1], r_u[2]);
+#endif
                     if (!T_ray)
                         return false;
 
                     return true;
                 });
-            T_ray *= T_maj / T_maj[0];
-            r_l *= T_maj / T_maj[0];
-            r_u *= T_maj / T_maj[0];
+            T_ray *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_l *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_u *= T_maj / T_maj[lambda.ChannelIdx()];
         }
 
         if (!result.hit || !T_ray)
@@ -246,7 +255,7 @@ inline PBRT_CPU_GPU void TraceTransmittance(ShadowRayWorkItem sr,
 
         ray = spawnTo(pLight);
     }
-
+#if !defined(PBRT_RGB_RENDERING)
     PBRT_DBG("Final T_ray %.9g %.9g %.9g %.9g sr.r_u %.9g %.9g %.9g %.9g "
              "r_u %.9g %.9g %.9g %.9g\n",
              T_ray[0], T_ray[1], T_ray[2], T_ray[3], sr.r_u[0], sr.r_u[1],
@@ -259,15 +268,30 @@ inline PBRT_CPU_GPU void TraceTransmittance(ShadowRayWorkItem sr,
              T_ray[1] / (sr.r_u * r_u + sr.r_l * r_l).Average(),
              T_ray[2] / (sr.r_u * r_u + sr.r_l * r_l).Average(),
              T_ray[3] / (sr.r_u * r_u + sr.r_l * r_l).Average());
-
+#else
+    PBRT_DBG("Final T_ray %.9g %.9g %.9g sr.r_u %.9g %.9g %.9g "
+             "r_u %.9g %.9g %.9g\n",
+             T_ray[0], T_ray[1], T_ray[2], sr.r_u[0], sr.r_u[1],
+             sr.r_u[2], r_u[0], r_u[1], r_u[2]);
+    PBRT_DBG("sr.r_l %.9g %.9g %.9g r_l %.9g %.9g %.9g\n",
+             sr.r_l[0], sr.r_l[1], sr.r_l[2], r_l[0],
+             r_l[1], r_l[2]);
+    PBRT_DBG("scaled throughput %.9g %.9g %.9g\n",
+             T_ray[0] / (sr.r_u * r_u + sr.r_l * r_l).Average(),
+             T_ray[1] / (sr.r_u * r_u + sr.r_l * r_l).Average(),
+             T_ray[2] / (sr.r_u * r_u + sr.r_l * r_l).Average());
+#endif
     if (T_ray) {
         // FIXME/reconcile: this takes r_l as input while
         // e.g. VolPathIntegrator::SampleLd() does not...
         Ld *= T_ray / (sr.r_u * r_u + sr.r_l * r_l).Average();
-
+#if !defined(PBRT_RGB_RENDERING)
         PBRT_DBG("Setting final Ld for shadow ray pixel index %d = as %f %f %f %f\n",
                  sr.pixelIndex, Ld[0], Ld[1], Ld[2], Ld[3]);
-
+#else
+        PBRT_DBG("Setting final Ld for shadow ray pixel index %d = as %f %f %f\n",
+                 sr.pixelIndex, Ld[0], Ld[1], Ld[2]);
+#endif
         SampledSpectrum Lpixel = pixelSampleState->L[sr.pixelIndex];
         pixelSampleState->L[sr.pixelIndex] = Lpixel + Ld;
     }

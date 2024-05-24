@@ -811,7 +811,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
         if (!seg)
             return T_maj;
         // Handle zero-valued majorant for current segment
-        if (seg->sigma_maj[0] == 0) {
+        if (seg->sigma_maj[lambda.ChannelIdx()] == 0) {
             Float dt = seg->tMax - seg->tMin;
             // Handle infinite _dt_ for ray majorant segment
             if (IsInf(dt))
@@ -825,9 +825,9 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
         Float tMin = seg->tMin;
         while (true) {
             // Try to generate sample along current majorant segment
-            Float t = tMin + SampleExponential(u, seg->sigma_maj[0]);
-            PBRT_DBG("Sampled t = %f from tMin %f u %f sigma_maj[0] %f\n", t, tMin, u,
-                     seg->sigma_maj[0]);
+            Float t = tMin + SampleExponential(u, seg->sigma_maj[lambda.ChannelIdx()]);
+            PBRT_DBG("Sampled t = %f from tMin %f u %f sigma_maj[%d] %f\n", t, tMin, u,
+                     lambda.ChannelIdx(), seg->sigma_maj[lambda.ChannelIdx()]);
             u = rng.Uniform<Float>();
             if (t < seg->tMax) {
                 // Call callback function for sample within segment
@@ -851,7 +851,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
                     dt = std::numeric_limits<Float>::max();
 
                 T_maj *= FastExp(-dt * seg->sigma_maj);
-                PBRT_DBG("Past end, added dt %f * maj[0] %f\n", dt, seg->sigma_maj[0]);
+                PBRT_DBG("Past end, added dt %f * maj[%d] %f\n", dt, lambda.ChannelIdx(), seg->sigma_maj[lambda.ChannelIdx()]);
                 break;
             }
         }

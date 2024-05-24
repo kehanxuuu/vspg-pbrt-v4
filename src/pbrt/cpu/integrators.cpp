@@ -349,7 +349,7 @@ SampledSpectrum Integrator::Tr(const Interaction &p0, const Interaction &p1,
                                     ClampZero(sigma_maj - mp.sigma_a - mp.sigma_s);
 
                                 // ratio-tracking: only evaluate null scattering
-                                Float pr = T_maj[0] * sigma_maj[0];
+                                Float pr = T_maj[lambda.ChannelIdx()] * sigma_maj[lambda.ChannelIdx()];
                                 Tr *= T_maj * sigma_n / pr;
                                 inv_w *= T_maj * sigma_maj / pr;
 
@@ -358,8 +358,8 @@ SampledSpectrum Integrator::Tr(const Interaction &p0, const Interaction &p1,
 
                                 return true;
                             });
-            Tr *= T_maj / T_maj[0];
-            inv_w *= T_maj / T_maj[0];
+            Tr *= T_maj / T_maj[lambda.ChannelIdx()];
+            inv_w *= T_maj / T_maj[lambda.ChannelIdx()];
         }
 
         // Generate next ray segment or return final transmittance
@@ -867,8 +867,8 @@ SampledSpectrum SimpleVolPathIntegrator::Li(RayDifferential ray,
                         [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj,
                             SampledSpectrum T_maj) {
                             // Compute medium event probabilities for interaction
-                            Float pAbsorb = mp.sigma_a[0] / sigma_maj[0];
-                            Float pScatter = mp.sigma_s[0] / sigma_maj[0];
+                            Float pAbsorb = mp.sigma_a[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
+                            Float pScatter = mp.sigma_s[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                             Float pNull = std::max<Float>(0, 1 - pAbsorb - pScatter);
 
                             // Randomly sample medium scattering event for delta tracking
@@ -996,7 +996,7 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                     // Add emission from medium scattering event
                     if (depth < maxDepth && mp.Le) {
                         // Compute $\beta'$ at new path vertex
-                        Float pdf = sigma_maj[0] * T_maj[0];
+                        Float pdf = sigma_maj[lambda.ChannelIdx()] * T_maj[lambda.ChannelIdx()];
                         SampledSpectrum betap = beta * T_maj / pdf;
 
                         // Compute rescaled path probability for absorption at path vertex
@@ -1008,8 +1008,8 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                     }
 
                     // Compute medium event probabilities for interaction
-                    Float pAbsorb = mp.sigma_a[0] / sigma_maj[0];
-                    Float pScatter = mp.sigma_s[0] / sigma_maj[0];
+                    Float pAbsorb = mp.sigma_a[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
+                    Float pScatter = mp.sigma_s[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                     Float pNull = std::max<Float>(0, 1 - pAbsorb - pScatter);
 
                     CHECK_GE(1 - pAbsorb - pScatter, -1e-6);
@@ -1030,7 +1030,7 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                         }
 
                         // Update _beta_ and _r_u_ for real-scattering event
-                        Float pdf = T_maj[0] * mp.sigma_s[0];
+                        Float pdf = T_maj[lambda.ChannelIdx()] * mp.sigma_s[lambda.ChannelIdx()];
                         beta *= T_maj * mp.sigma_s / pdf;
                         r_u *= T_maj * mp.sigma_s / pdf;
 
@@ -1064,7 +1064,7 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
                         // Handle null scattering along ray path
                         SampledSpectrum sigma_n =
                             ClampZero(sigma_maj - mp.sigma_a - mp.sigma_s);
-                        Float pdf = T_maj[0] * sigma_n[0];
+                        Float pdf = T_maj[lambda.ChannelIdx()] * sigma_n[lambda.ChannelIdx()];
                         beta *= T_maj * sigma_n / pdf;
                         if (pdf == 0)
                             beta = SampledSpectrum(0.f);
@@ -1079,9 +1079,9 @@ SampledSpectrum VolPathIntegrator::Li(RayDifferential ray, SampledWavelengths &l
             if (scattered)
                 continue;
 
-            beta *= T_maj / T_maj[0];
-            r_u *= T_maj / T_maj[0];
-            r_l *= T_maj / T_maj[0];
+            beta *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_u *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_l *= T_maj / T_maj[lambda.ChannelIdx()];
         }
         // Handle surviving unscattered rays
         // Add emitted light at volume path vertex or from the environment
@@ -1354,7 +1354,7 @@ SampledSpectrum VolPathIntegrator::SampleLd(const Interaction &intr, const BSDF 
                                 // Update _T_ray_ and PDFs using ratio-tracking estimator
                                 SampledSpectrum sigma_n =
                                     ClampZero(sigma_maj - mp.sigma_a - mp.sigma_s);
-                                Float pdf = T_maj[0] * sigma_maj[0];
+                                Float pdf = T_maj[lambda.ChannelIdx()] * sigma_maj[lambda.ChannelIdx()];
                                 T_ray *= T_maj * sigma_n / pdf;
                                 r_l *= T_maj * sigma_maj / pdf;
                                 r_u *= T_maj * sigma_n / pdf;
@@ -1375,9 +1375,9 @@ SampledSpectrum VolPathIntegrator::SampleLd(const Interaction &intr, const BSDF 
                                 return true;
                             });
             // Update transmittance estimate for final segment
-            T_ray *= T_maj / T_maj[0];
-            r_l *= T_maj / T_maj[0];
-            r_u *= T_maj / T_maj[0];
+            T_ray *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_l *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_u *= T_maj / T_maj[lambda.ChannelIdx()];
         }
 
         // Generate next ray segment or return final transmittance
@@ -1999,8 +1999,8 @@ int RandomWalk(const Integrator &integrator, SampledWavelengths &lambda,
                 [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj,
                     SampledSpectrum T_maj) {
                     // Compute medium event probabilities for interaction
-                    Float pAbsorb = mp.sigma_a[0] / sigma_maj[0];
-                    Float pScatter = mp.sigma_s[0] / sigma_maj[0];
+                    Float pAbsorb = mp.sigma_a[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
+                    Float pScatter = mp.sigma_s[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                     Float pNull = std::max<Float>(0, 1 - pAbsorb - pScatter);
 
                     // Randomly sample medium event for _RandomRalk()_ ray
@@ -2013,7 +2013,7 @@ int RandomWalk(const Integrator &integrator, SampledWavelengths &lambda,
 
                     } else if (mode == 1) {
                         // Handle scattering for _RandomWalk()_ ray
-                        beta *= T_maj * mp.sigma_s / (T_maj[0] * mp.sigma_s[0]);
+                        beta *= T_maj * mp.sigma_s / (T_maj[lambda.ChannelIdx()] * mp.sigma_s[lambda.ChannelIdx()]);
                         // Record medium interaction in _path_ and compute forward density
                         MediumInteraction intr(p, -ray.d, ray.time, ray.medium, mp.phase);
                         vertex = Vertex::CreateMedium(intr, beta, pdfFwd, prev);
@@ -2045,7 +2045,7 @@ int RandomWalk(const Integrator &integrator, SampledWavelengths &lambda,
                         // Handle null scattering for _RandomWalk()_ ray
                         SampledSpectrum sigma_n =
                             ClampZero(sigma_maj - mp.sigma_a - mp.sigma_s);
-                        Float pdf = T_maj[0] * sigma_n[0];
+                        Float pdf = T_maj[lambda.ChannelIdx()] * sigma_n[lambda.ChannelIdx()];
                         if (pdf == 0)
                             beta = SampledSpectrum(0.f);
                         else
@@ -2055,7 +2055,7 @@ int RandomWalk(const Integrator &integrator, SampledWavelengths &lambda,
                 });
             // Update _beta_ for medium transmittance
             if (!scattered)
-                beta *= T_maj / T_maj[0];
+                beta *= T_maj / T_maj[lambda.ChannelIdx()];
         }
 
         if (terminated)
@@ -4194,7 +4194,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                     // Add emission from medium scattering event
                     if (depth < maxDepth && mp.Le) {
                         // Compute $\beta'$ at new path vertex
-                        Float pdf = sigma_maj[0] * T_maj[0];
+                        Float pdf = sigma_maj[lambda.ChannelIdx()] * T_maj[lambda.ChannelIdx()];
                         SampledSpectrum betap = beta * T_maj / pdf;
 
                         // Compute rescaled path probability for absorption at path vertex
@@ -4206,8 +4206,8 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                     }
 
                     // Compute medium event probabilities for interaction
-                    Float pAbsorb = mp.sigma_a[0] / sigma_maj[0];
-                    Float pScatter = mp.sigma_s[0] / sigma_maj[0];
+                    Float pAbsorb = mp.sigma_a[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
+                    Float pScatter = mp.sigma_s[lambda.ChannelIdx()] / sigma_maj[lambda.ChannelIdx()];
                     Float pNull = std::max<Float>(0, 1 - pAbsorb - pScatter);
 
                     CHECK_GE(1 - pAbsorb - pScatter, -1e-6);
@@ -4228,7 +4228,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                         }
 
                         // Update _beta_ and _r_u_ for real-scattering event
-                        Float pdf = T_maj[0] * mp.sigma_s[0];
+                        Float pdf = T_maj[lambda.ChannelIdx()] * mp.sigma_s[lambda.ChannelIdx()];
                         beta *= T_maj * mp.sigma_s / pdf;
                         r_u *= T_maj * mp.sigma_s / pdf;
 
@@ -4277,7 +4277,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                         // Handle null scattering along ray path
                         SampledSpectrum sigma_n =
                             ClampZero(sigma_maj - mp.sigma_a - mp.sigma_s);
-                        Float pdf = T_maj[0] * sigma_n[0];
+                        Float pdf = T_maj[lambda.ChannelIdx()] * sigma_n[lambda.ChannelIdx()];
                         beta *= T_maj * sigma_n / pdf;
                         transmittanceWeight *= T_maj * sigma_n / pdf;
                         if (pdf == 0) {
@@ -4295,10 +4295,10 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
             if (scattered)
                 continue;
 
-            transmittanceWeight *= T_maj / T_maj[0];
-            beta *= T_maj / T_maj[0];
-            r_u *= T_maj / T_maj[0];
-            r_l *= T_maj / T_maj[0];
+            transmittanceWeight *= T_maj / T_maj[lambda.ChannelIdx()];
+            beta *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_u *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_l *= T_maj / T_maj[lambda.ChannelIdx()];
         }
 
         // Handle surviving unscattered rays
@@ -4620,7 +4620,7 @@ SampledSpectrum GuidedVolPathIntegrator::SampleLd(const Interaction &intr, const
                                 // Update _T_ray_ and PDFs using ratio-tracking estimator
                                 SampledSpectrum sigma_n =
                                     ClampZero(sigma_maj - mp.sigma_a - mp.sigma_s);
-                                Float pdf = T_maj[0] * sigma_maj[0];
+                                Float pdf = T_maj[lambda.ChannelIdx()] * sigma_maj[lambda.ChannelIdx()];
                                 T_ray *= T_maj * sigma_n / pdf;
                                 r_l *= T_maj * sigma_maj / pdf;
                                 r_u *= T_maj * sigma_n / pdf;
@@ -4641,9 +4641,9 @@ SampledSpectrum GuidedVolPathIntegrator::SampleLd(const Interaction &intr, const
                                 return true;
                             });
             // Update transmittance estimate for final segment
-            T_ray *= T_maj / T_maj[0];
-            r_l *= T_maj / T_maj[0];
-            r_u *= T_maj / T_maj[0];
+            T_ray *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_l *= T_maj / T_maj[lambda.ChannelIdx()];
+            r_u *= T_maj / T_maj[lambda.ChannelIdx()];
         }
         // Generate next ray segment or return final transmittance
         if (!T_ray)
