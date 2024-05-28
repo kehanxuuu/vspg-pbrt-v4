@@ -103,8 +103,7 @@ endif ()
 option(PBRT_WITH_PATH_GUIDING "Build PBRT with path guiding (Open PGL) support." ON)
 
 if(PBRT_WITH_PATH_GUIDING)
-  ADD_DEFINITIONS (-D PBRT_WITH_PATH_GUIDING )
-  message(STATUS "OPENPGL_LIBRARIES: ${OPENPGL_LIBRARIES}")
+  list (APPEND PBRT_DEFINITIONS "PBRT_WITH_PATH_GUIDING")
 endif()
 
 ###########################################################################
@@ -112,7 +111,7 @@ endif()
 option(PBRT_WITH_RGB "Enable RGB rendering in favor of spectral rendering." OFF)
 
 if(PBRT_WITH_RGB)
-  ADD_DEFINITIONS (-D PBRT_RGB_RENDERING )
+  list (APPEND PBRT_DEFINITIONS "PBRT_RGB_RENDERING")
 endif()
 
 #######################################
