@@ -930,7 +930,7 @@ inline void guiding_addSurfaceData(openpgl::cpp::PathSegment* pathSegmentData, c
     }
 }
 
-inline void guiding_addVolumeData(openpgl::cpp::PathSegment* pathSegmentData, const Float& phaseWeight, const Vector3f& wi, const Float phasePDF, const Float meanCosine)
+inline void guiding_addVolumeData(openpgl::cpp::PathSegment* pathSegmentData, const Float& phaseWeight, const Vector3f& wi, const Float phasePDF, const Float meanCosine, const Float survivalProbability)
 {
     const pgl_vec3f pglZero = openpgl::cpp::Vector3(0.0f, 0.0f, 0.0f);
     const pgl_vec3f pglOne = openpgl::cpp::Vector3(1.0f, 1.0f, 1.0f);
@@ -950,7 +950,7 @@ inline void guiding_addVolumeData(openpgl::cpp::PathSegment* pathSegmentData, co
         openpgl::cpp::SetIsDelta(pathSegmentData, is_delta);
         openpgl::cpp::SetEta(pathSegmentData, 1.0f);
         openpgl::cpp::SetRoughness(pathSegmentData, sampledRoughness);
-        openpgl::cpp::SetRussianRouletteProbability(pathSegmentData, 1.0f);
+        openpgl::cpp::SetRussianRouletteProbability(pathSegmentData, survivalProbability);
     }
 }
 

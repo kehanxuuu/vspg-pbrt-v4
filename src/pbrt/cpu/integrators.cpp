@@ -4281,9 +4281,11 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
 
     ContributionEstimate::ContributionEstimateData ced;
 
-    SampledSpectrum pixelContributionEstimate(0.f);
-    SampledSpectrum adjointEstimate(0.f);
+    SampledSpectrum pixelContributionEstimate(1.f);
+    SampledSpectrum adjointEstimate(1.f);
     bool guideRR = false;
+    const bool guideSurfaceRR = guideSettings.guideSurfaceRR;
+    const bool guideVolumeRR = guideSettings.guideVolumeRR;
     if (guideSettings.guideRR && contributionEstimateReady) {
         pixelContributionEstimate = contributionEstimate->GetContributionEstimate(pPixel);
         guideRR = true;
@@ -4412,15 +4414,43 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
 
                             Float v = sampler.Get1D();
                             gphase.init(&intr.phase, p, ray.d, v);
-                            adjointEstimate = gphase.InscatteredRadiance(-ray.d);
+                            if(guideRR && guideVolumeRR) {
+                                adjointEstimate = gphase.InscatteredRadiance(-ray.d);
+                            }
 
+                            // calculate survival property
+                            survivalProb = 1.0f;
+                            if (depth > minRRDepth) {
+                                if (guideRR) {
+                                    if(guideVolumeRR)
+                                        survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
+                                    else
+                                        survivalProb = 1.f;
+                                } else {
+                                    survivalProb = specularBounce ? 0.95 : StandardRussianRouletteSurvivalProbability((beta / r_u.Average()) * rr_correction, 1.0f);
+                                }
+                            }
+
+                            // Preform next-event estimation before RR
                             if(useNEE){
-                                SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, survivalProb, lambda, sampler, r_u);
+                                SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, 1.0f, lambda, sampler, r_u);
                                 L += beta * Ld;
 
                                 // Guiding - add scattered contribution from NEE
                                 guiding_addScatteredDirectLight(pathSegmentData, Ld, lambda, colorSpace);
                             }
+
+                            // Perform stochastic path termination (Russian Roulette) 
+                            if (survivalProb < 1 && depth > minRRDepth) {
+                                Float q = std::max<Float>(0, 1 - survivalProb);
+                                if (sampler.Get1D() < q){
+                                    terminated = true;
+                                    return false;
+                                }
+                                beta /= 1 - q;
+                            }
+
+                            // Continue path
                             // Sample new direction at real-scattering event
                             Point2f u = sampler.Get2D();
                             pstd::optional<PhaseFunctionSample> ps =
@@ -4439,7 +4469,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                                 specularBounce = false;
                                 anyNonSpecularBounces = true;
 
-                                guiding_addVolumeData(pathSegmentData, phaseFunctionWeight, ps->wi, ps->pdf, ps->meanCosine);
+                                guiding_addVolumeData(pathSegmentData, phaseFunctionWeight, ps->wi, ps->pdf, ps->meanCosine, survivalProb);
                             }
                         }
                         return false;
@@ -4512,6 +4542,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                 Float lightPDF = lightSampler.PMF(prevIntrContext, areaLight) *
                             areaLight.PDF_Li(prevIntrContext, ray.d, true);
                 r_l *= lightPDF;
+                // TODO add handling of survivial probability
                 Float w_l = useNEE ? 1.0f / (r_u + r_l).Average() : 1.0f;
                 L += beta * w_l * Le;
                 w = w_l;
@@ -4576,10 +4607,15 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         // Guiding - Check if we can use guiding. If so intialize the guiding distribution
         Float v = sampler.Get1D();
         gbsdf.init(&bsdf, ray, si, v);
-        adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
+        if(guideRR && guideSurfaceRR) {
+            adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
+        }
 
         if (guideRR && depth > minRRDepth) {
-            survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
+            if(guideSurfaceRR)
+                survivalProb = specularBounce ? 0.95 : GuidedRussianRouletteProbability(beta, adjointEstimate, pixelContributionEstimate);
+            else
+                survivalProb = 1.f;
         }
 
         if (depth == 1 && visibleSurf && guiding_field->GetIteration() > 0) {
@@ -4588,7 +4624,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
 
         // Sample illumination from lights to find attenuated path contribution
         if (useNEE && IsNonSpecular(bsdf.Flags())) {
-            SampledSpectrum Ld = SampleLd(isect, &gbsdf, nullptr, survivalProb, lambda, sampler, r_u);
+            SampledSpectrum Ld = SampleLd(isect, &gbsdf, nullptr, 1.0f, lambda, sampler, r_u);
             L += beta * Ld;
             DCHECK(IsInf(L.y(lambda)) == false);
 
@@ -4874,6 +4910,8 @@ std::unique_ptr<GuidedVolPathIntegrator> GuidedVolPathIntegrator::Create(
     settings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
     settings.guideVolume = parameters.GetOneBool("volumeguiding", true);
     settings.guideRR = parameters.GetOneBool("rrguiding", false);
+    settings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
+    settings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);
 
     settings.enableGuiding = settings.guideSurface || settings.guideVolume;
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");

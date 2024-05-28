@@ -394,7 +394,10 @@ class GuidedVolPathIntegrator : public RayIntegrator {
         bool enableGuiding {true};
         bool guideSurface {true};
         bool guideVolume {true};
+
         bool guideRR {false};
+        bool guideSurfaceRR {true};
+        bool guideVolumeRR {true};
 
         GuidingType surfaceGuidingType {EGuideRIS};
         GuidingType volumeGuidingType {EGuideRIS};
