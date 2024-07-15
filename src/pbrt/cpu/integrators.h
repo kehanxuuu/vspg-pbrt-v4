@@ -25,6 +25,7 @@
 
 #ifdef PBRT_WITH_PATH_GUIDING
 #include <pbrt/cpu/guiding.h>
+#include <pbrt/cpu/vspbuffer.h>
 #endif
 
 #include <functional>
@@ -470,6 +471,101 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     bool imageSpaceGuidingBufferReady {false};
     bool calculateImageSpaceGuidingBuffer {false};
     int imageSpaceGuidingBufferUpdateWave {0};
+    int waveCounter {0};
+};
+
+// GuidedVolPathVSPGIntegrator Definition
+class GuidedVolPathVSPGIntegrator : public RayIntegrator {
+public:
+    struct GuidingSettings {
+        bool guideSurface {true};
+        bool guideVolume {true};
+
+        bool guideRR {false};
+        bool guideSurfaceRR {true};
+        bool guideVolumeRR {true};
+
+        GuidingType surfaceGuidingType {EGuideRIS};
+        GuidingType volumeGuidingType {EGuideRIS};
+        float guideSurfaceProbability {0.5f};
+        float guideVolumeProbability {0.5f};
+        bool knnLookup {true};
+        int guideNumTrainingWaves {128};
+
+        bool storeGuidingCache {false};
+        bool loadGuidingCache {false};
+        std::string guidingCacheFileName {""};
+
+        bool useVSPBuffer {false};
+        bool storeVSPBuffer {true};
+        bool loadVSPBuffer {false};
+        std::string vspBufferFileName {""};
+
+        bool storeContributionEstimate {false};
+        bool loadContributionEstimate {false};
+        std::string contributionEstimateFileName {""};
+    };
+public:
+    // VolPathIntegrator Public Methods
+    GuidedVolPathVSPGIntegrator(int maxDepth, int minRRDepth, bool useNEE, const GuidingSettings settings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
+                            std::vector<Light> lights,
+                            const std::string &lightSampleStrategy = "bvh",
+                            bool regularize = false);
+
+    ~GuidedVolPathVSPGIntegrator();
+
+    SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
+                       ScratchBuffer &scratchBuffer,
+                       VisibleSurface *visibleSurface) const;
+
+    void PostProcessWave() override;
+
+    static std::unique_ptr<GuidedVolPathVSPGIntegrator> Create(
+            const ParameterDictionary &parameters, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
+            Primitive aggregate, std::vector<Light> lights, const FileLoc *loc);
+
+    std::string ToString() const;
+
+private:
+    // GuidedVolPathIntegrator Private Methods
+    SampledSpectrum SampleLd(const Interaction &intr, const GuidedBSDF *bsdf, const GuidedPhaseFunction *phase,
+                             const Float survivalProb, SampledWavelengths &lambda, Sampler sampler,
+                             SampledSpectrum inv_w_u) const;
+
+    const PixelSensor *sensor {nullptr};
+
+    // GuidedVolPathIntegrator Private Members
+    int maxDepth;
+    int minRRDepth;
+    bool useNEE {true};
+    LightSampler lightSampler;
+    bool regularize;
+    const RGBColorSpace *colorSpace {nullptr};
+
+    // Path Guiding
+    GuidingSettings guideSettings;
+    bool guideTraining {false};
+    float guidingInfiniteLightDistance {1e6f};
+
+    ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
+    ThreadLocal<openpgl::cpp::SurfaceSamplingDistribution*>* guiding_threadSurfaceSamplingDistribution;
+    ThreadLocal<openpgl::cpp::VolumeSamplingDistribution*>* guiding_threadVolumeSamplingDistribution;
+
+    openpgl::cpp::FieldConfig guiding_fieldConfig;
+    openpgl::cpp::SampleStorage* guiding_sampleStorage {nullptr};
+    openpgl::cpp::Field* guiding_field {nullptr};
+    openpgl::cpp::Device* guiding_device {nullptr};
+
+    VSPBuffer* vspBuffer {nullptr};
+    bool vspBufferReady {false};
+    bool calulateVSPBuffer {false};
+    int vspBufferWave {0};
+
+    ContributionEstimate* contributionEstimate {nullptr};
+    bool contributionEstimateReady {false};
+    bool calulateContributionEstimate {false};
+    int contributionEstimateWave {0};
+
     int waveCounter {0};
 };
 #endif

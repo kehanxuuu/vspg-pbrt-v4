@@ -3703,6 +3703,9 @@ std::unique_ptr<Integrator> Integrator::Create(
     else if (name == "guidedvolpath")
         integrator =
             GuidedVolPathIntegrator::Create(parameters, colorSpace, camera, sampler, aggregate, lights, loc);
+    else if (name == "guidedvolpathvspg")
+        integrator =
+            GuidedVolPathVSPGIntegrator::Create(parameters, colorSpace, camera, sampler, aggregate, lights, loc);
 #endif
     else if (name == "bdpt")
         integrator =

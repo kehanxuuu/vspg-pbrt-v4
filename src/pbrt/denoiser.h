@@ -37,14 +37,19 @@ class OIDNDenoiser: public Denoiser {
     // All pointers should be to GPU memory.
     // |n| and |albedo| should be nullptr iff \haveAlbedoAndNormal| is false.
     void Denoise(RGB *rgb, Normal3f *n, RGB *albedo, RGB *result);
+    void Denoise(RGB *rgb, RGB *rgb2nd, Normal3f *n, RGB *albedo, RGB *result, RGB *result2nd);
+    void Denoise(Float *l, Float *result);
 
   private:
-    bool filterFeatures {false};
+    bool filterFeatures {true};
 
     oidn::DeviceRef oidnDevice;
     
     oidn::BufferRef bufferColor;
     oidn::BufferRef bufferColorOutput;
+
+    oidn::BufferRef bufferScalar;
+    oidn::BufferRef bufferScalarOutput;
 
     oidn::BufferRef bufferAlbedo;
     oidn::BufferRef bufferAlbedoOutput;
@@ -55,6 +60,7 @@ class OIDNDenoiser: public Denoiser {
     oidn::FilterRef oidnAlbedoFilter;
     oidn::FilterRef oidnNormalFilter;
     oidn::FilterRef oidnColorFilter;
+    oidn::FilterRef oidnScalarFilter;
 };
 #endif
 

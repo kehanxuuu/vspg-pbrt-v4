@@ -21,10 +21,12 @@ OIDNDenoiser::OIDNDenoiser(Vector2i resolution, bool haveAlbedoAndNormal): Denoi
     size_t numPixels = resolution[0] * resolution[1];
 
     bufferColor = oidnDevice.newBuffer(numPixels * 3 * sizeof(float));
+    bufferScalar = oidnDevice.newBuffer(numPixels * 1 * sizeof(float));
 	bufferAlbedo = oidnDevice.newBuffer(numPixels * 3 * sizeof(float));		
 	bufferNormal = oidnDevice.newBuffer(numPixels * 3 * sizeof(float));
 
     bufferColorOutput = oidnDevice.newBuffer(numPixels * 3 * sizeof(float));
+    bufferScalarOutput = oidnDevice.newBuffer(numPixels * 1 * sizeof(float));
 	
     if (filterFeatures) {
         bufferNormalOutput = oidnDevice.newBuffer(numPixels * 3 * sizeof(float));
@@ -58,7 +60,14 @@ OIDNDenoiser::OIDNDenoiser(Vector2i resolution, bool haveAlbedoAndNormal): Denoi
 		oidnColorFilter.set("hdr", true);
 		oidnColorFilter.commit();
     }
-    		// Check for errors
+
+    oidnScalarFilter = oidnDevice.newFilter("RT");
+    oidnScalarFilter.setImage("color", bufferScalar, oidn::Format::Float, resolution[0], resolution[1]);
+    oidnScalarFilter.setImage("output", bufferScalarOutput, oidn::Format::Float, resolution[0], resolution[1]);
+    oidnScalarFilter.set("hdr", true);
+    oidnScalarFilter.commit();
+    
+    // Check for errors
 	//if (oidnDevice.getError(errorMessage) != oidn::Error::None)
 	//	std::cout << "Error: " << errorMessage << std::endl;
 
@@ -80,6 +89,33 @@ void OIDNDenoiser::Denoise(RGB *rgb, Normal3f *n, RGB *albedo, RGB *result) {
     const char* errorMessage;
 	//if (oidnDevice.getError(errorMessage) != oidn::Error::None)
 	//	std::cout << "Error: " << errorMessage << std::endl;
+}
+
+void OIDNDenoiser::Denoise(RGB *rgb, RGB *rgb2nd, Normal3f *n, RGB *albedo, RGB *result, RGB *result2nd) {
+    // Copy data to OIDN buffers
+    bufferColor.write(0, resolution[0]*resolution[1]*3*sizeof(float), rgb);
+    bufferNormal.write(0, resolution[0]*resolution[1]*3*sizeof(float), n);
+    bufferAlbedo.write(0, resolution[0]*resolution[1]*3*sizeof(float), albedo);
+    if (filterFeatures){
+        oidnAlbedoFilter.execute();
+        oidnNormalFilter.execute();
+    }
+    oidnColorFilter.execute();
+    bufferColorOutput.read(0, resolution[0]*resolution[1]*3*sizeof(float), result);
+
+    bufferColor.write(0, resolution[0]*resolution[1]*3*sizeof(float), rgb2nd);
+    oidnColorFilter.execute();
+    bufferColorOutput.read(0, resolution[0]*resolution[1]*3*sizeof(float), result2nd);
+
+    const char* errorMessage;
+    //if (oidnDevice.getError(errorMessage) != oidn::Error::None)
+    //	std::cout << "Error: " << errorMessage << std::endl;
+}
+
+void OIDNDenoiser::Denoise(Float *l, Float *result) {
+    bufferScalar.write(0, resolution[0]*resolution[1]*1*sizeof(float), l);
+    oidnScalarFilter.execute();
+    bufferScalarOutput.read(0, resolution[0]*resolution[1]*1*sizeof(float), result);
 }
 
 #endif
