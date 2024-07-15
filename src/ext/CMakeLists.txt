@@ -204,7 +204,7 @@ include(ExternalProject)
       )
     endif()
 
-    if(NOT APPLE)
+    if(NOT APPLE AND NOT "${PBRT_OPTIX7_PATH}" STREQUAL "")
       find_package (CUDA)
       if(CUDA_FOUND)
         set(OIDN_DEVICE_CUDA ON)

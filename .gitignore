@@ -7,3 +7,6 @@ src/build
 build/
 install/
 .cache/
+cmake-build-*/
+.idea
+.vscode/
