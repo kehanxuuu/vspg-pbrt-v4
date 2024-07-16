@@ -10,6 +10,8 @@
 #include <pbrt/util/spectrum.h>
 #include <pbrt/wavefront/workitems.h>
 
+#include <pbrt/media_sampleTMaj.h>
+
 namespace pbrt {
 
 // Wavefront Ray Intersection Enqueuing Functions

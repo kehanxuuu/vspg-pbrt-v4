@@ -66,7 +66,7 @@ OIDNDenoiser::OIDNDenoiser(Vector2i resolution, bool haveAlbedoAndNormal): Denoi
     oidnScalarFilter.setImage("output", bufferScalarOutput, oidn::Format::Float, resolution[0], resolution[1]);
     oidnScalarFilter.set("hdr", true);
     oidnScalarFilter.commit();
-    
+
     // Check for errors
 	//if (oidnDevice.getError(errorMessage) != oidn::Error::None)
 	//	std::cout << "Error: " << errorMessage << std::endl;

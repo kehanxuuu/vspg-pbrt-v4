@@ -14,6 +14,7 @@
 #include <pbrt/lights.h>
 #include <pbrt/materials.h>
 #include <pbrt/media.h>
+#include <pbrt/media_sampleTMaj.h>
 #include <pbrt/options.h>
 #include <pbrt/paramdict.h>
 #include <pbrt/samplers.h>

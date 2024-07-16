@@ -597,6 +597,7 @@ set (PBRT_SOURCE_HEADERS
   src/pbrt/lights.h
   src/pbrt/materials.h
   src/pbrt/media.h
+  src/pbrt/media_sampleTMaj.h
   src/pbrt/options.h
   src/pbrt/paramdict.h
   src/pbrt/parser.h

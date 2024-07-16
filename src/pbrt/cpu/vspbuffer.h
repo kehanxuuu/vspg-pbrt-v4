@@ -237,9 +237,9 @@ struct VSPBuffer {
     /**
      * Returns the VSP for a given pixel index.
      */
-    Float GetVSP(const Point2i &pPixel, const bool secondMoment = false) const {
+    Float GetVSP(const Point2i &pPixel, const bool contributionBased = true) const {
         const int pixIdx = pPixel.y * resolution.x + pPixel.x;
-        const Float vsp = !secondMoment ? vspContributionBuffer[pixIdx] : vspSecondMomentBuffer[pixIdx];
+        const Float vsp = contributionBased ? vspContributionBuffer[pixIdx] : vspSecondMomentBuffer[pixIdx];
         //std::cout << "GetVSP("<< secondMoment <<"): " << "pixIdx = " << pixIdx << "    vsp = " << vsp << std::endl;
         return vsp;
     }

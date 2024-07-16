@@ -5,6 +5,7 @@
 #include <pbrt/wavefront/integrator.h>
 
 #include <pbrt/media.h>
+#include <pbrt/media_sampleTMaj.h>
 
 namespace pbrt {
 

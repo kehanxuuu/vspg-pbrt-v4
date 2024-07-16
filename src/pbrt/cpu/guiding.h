@@ -71,10 +71,11 @@ struct GuidedBSDF{
     };
 
     GuidedBSDF(Sampler* sampler, openpgl::cpp::Field* guiding_field,
-    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideRIS){
+    openpgl::cpp::SurfaceSamplingDistribution* surfaceSamplingDistribution, bool enableGuiding = true, bool enableScatterGuiding = true, GuidingType guidingType = EGuideRIS){
         m_guiding_field = guiding_field;
         m_surfaceSamplingDistribution = surfaceSamplingDistribution;
         m_enableGuiding = enableGuiding;
+        m_enableScatterGuiding = enableScatterGuiding;
         m_sampler = sampler;
         m_guidingType = guidingType;
     }
@@ -103,6 +104,7 @@ struct GuidedBSDF{
             success = false;
         }
         useGuiding = m_enableGuiding ? success : false;
+        useScatterGuiding = m_enableScatterGuiding ? success : false;
         return success;
     }
 
@@ -290,6 +292,14 @@ struct GuidedBSDF{
         return m_surfaceSamplingDistribution->GetId();
     }
 
+    Float VolumeScatterProbability(Vector3f wiRender, bool contributionBased) {
+        if (!useScatterGuiding) {
+            return -1;
+        }
+        pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
+        return m_surfaceSamplingDistribution->VolumeScatterProbability(wi, contributionBased);
+    }
+
 #ifdef OPENPGL_RADIANCE_CACHES
     SampledSpectrum IncomingRadiance(const Vector3f wiRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
@@ -330,8 +340,10 @@ struct GuidedBSDF{
 
 private:
     bool m_enableGuiding = true;
+    bool m_enableScatterGuiding = true;
     float guidingProbability = 0.5f;
     bool useGuiding = false;
+        bool useScatterGuiding = false;
 
     GuidingType m_guidingType {EGuideRIS};
 
@@ -355,10 +367,11 @@ struct GuidedPhaseFunction{
     };
 
     GuidedPhaseFunction(Sampler* sampler, openpgl::cpp::Field* guiding_field,
-    openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution, bool enableGuiding = true, GuidingType guidingType = EGuideMIS){
+    openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution, bool enableGuiding = true, bool enableScatterGuiding = true, GuidingType guidingType = EGuideMIS){
         m_guiding_field = guiding_field;
         m_volumeSamplingDistribution = volumeSamplingDistribution;
         m_enableGuiding = enableGuiding;
+        m_enableScatterGuiding = enableScatterGuiding;
         m_sampler = sampler;
         m_guidingType = guidingType;
     }
@@ -376,6 +389,7 @@ struct GuidedPhaseFunction{
         }
 
         useGuiding = m_enableGuiding ? success : false;
+        useScatterGuiding = m_enableScatterGuiding ? success : false;
         return success;
     }
 
@@ -543,6 +557,14 @@ struct GuidedPhaseFunction{
         return m_phase->MeanCosine();
     }
 
+    Float VolumeScatterProbability(Vector3f wiRender, bool contributionBased) {
+        if (!useScatterGuiding) {
+            return -1;
+        }
+        pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
+        return m_volumeSamplingDistribution->VolumeScatterProbability(wi, contributionBased);
+    }
+
 #ifdef OPENPGL_RADIANCE_CACHES
     SampledSpectrum IncomingRadiance(const Vector3f wiRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
@@ -594,8 +616,10 @@ struct GuidedPhaseFunction{
 
 private:
     bool m_enableGuiding = true;
+    bool m_enableScatterGuiding = true;
     float guidingProbability = 0.5f;
     bool useGuiding = false;
+    bool useScatterGuiding = false;
 
     GuidingType m_guidingType {EGuideMIS};
 
@@ -603,6 +627,44 @@ private:
     openpgl::cpp::VolumeSamplingDistribution* m_volumeSamplingDistribution;
     const PhaseFunction* m_phase;
     Sampler* m_sampler;
+};
+
+struct GuidedInscatteredRadiance {
+    GuidedInscatteredRadiance(openpgl::cpp::Field* guiding_field,
+                              openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution,
+                              bool enableDistanceGuiding = true) {
+        m_guiding_field = guiding_field;
+        m_volumeSamplingDistribution = volumeSamplingDistribution;
+        m_enableDistanceGuiding = enableDistanceGuiding;
+    }
+
+    bool init(const Point3f& p) {
+        pgl_point3f pglP = openpgl::cpp::Point3(p[0], p[1], p[2]);
+        bool success = false;
+        float rand = -1.f; // Select the nearest spatial cache
+        if(m_volumeSamplingDistribution->Init(m_guiding_field, pglP, rand)) {
+            success = true;
+        }
+        useDistanceGuiding = m_enableDistanceGuiding ? success : false;
+        return success;
+    }
+
+    SampledSpectrum InscatteredRadiance(Vector3f wiRender, SampledWavelengths &lambda) {
+        if (!useDistanceGuiding) {
+            return SampledSpectrum(0.f);
+        }
+        pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
+        pgl_vec3f radiance = m_volumeSamplingDistribution->OutgoingRadiance(wi);
+        // InscatteredRadiance(wi, MeanCosine()); // Wrong, NEE-weighted
+        RGBUnboundedSpectrum radianceSpec(*RGBColorSpace::sRGB, RGB(radiance.x, radiance.y, radiance.z));
+        return radianceSpec.Sample(lambda);
+    }
+
+private:
+    bool m_enableDistanceGuiding = true;
+    bool useDistanceGuiding = true;
+    openpgl::cpp::Field* m_guiding_field;
+    openpgl::cpp::VolumeSamplingDistribution* m_volumeSamplingDistribution;
 };
 
 inline openpgl::cpp::PathSegment* guiding_newSurfacePathSegment(openpgl::cpp::PathSegmentStorage* pathSegmentStorage, const RayDifferential& ray, pstd::optional<pbrt::ShapeIntersection> si)

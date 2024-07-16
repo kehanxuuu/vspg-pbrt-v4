@@ -497,14 +497,41 @@ public:
         std::string guidingCacheFileName {""};
 
         bool useVSPBuffer {false};
-        bool storeVSPBuffer {true};
+        bool storeVSPBuffer {false};
         bool loadVSPBuffer {false};
         std::string vspBufferFileName {""};
+
+        bool guidePrimaryVSP {false};
+        bool guideSecondaryVSP {false};
+        float vspMISRatio {0.5f};
+        int vspCriterion {0}; // 0: contribution-based, 1: variance-based
+        bool resampling {false};
+        bool productDistanceGuiding {false};
 
         bool storeContributionEstimate {false};
         bool loadContributionEstimate {false};
         std::string contributionEstimateFileName {""};
     };
+
+    struct CandidateData {
+        Point3f p;
+        MediumProperties mp;
+        Float wi;
+        Float sigmaTTrEst;
+        SampledSpectrum throughputNumerator;
+        SampledSpectrum throughputDenominator;
+
+        CandidateData() {}
+
+        CandidateData(Point3f _p, MediumProperties _mp,
+                         Float _wi, Float _sigmaTTrEst,
+                         SampledSpectrum _throughputNumerator,
+                         SampledSpectrum _throughputDenominator)
+                : p(_p), mp(_mp), wi(_wi), sigmaTTrEst(_sigmaTTrEst),
+        throughputNumerator(_throughputNumerator),
+                  throughputDenominator(_throughputDenominator) {}
+    };
+
 public:
     // VolPathIntegrator Public Methods
     GuidedVolPathVSPGIntegrator(int maxDepth, int minRRDepth, bool useNEE, const GuidingSettings settings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
@@ -527,7 +554,28 @@ public:
     std::string ToString() const;
 
 private:
-    // GuidedVolPathIntegrator Private Methods
+    // GuidedVolPathVSPGIntegrator Private Methods
+    void SampleDistance(Point2i pPixel, RayDifferential &ray, Float tMax,
+                        SampledWavelengths &lambda, Sampler &sampler, RNG rng,
+                        bool &scattered, bool &terminated, int &depth,
+                        SampledSpectrum &L, SampledSpectrum &beta, SampledSpectrum &r_u, SampledSpectrum &r_l,
+                        bool &specularBounce, bool &anyNonSpecularBounces,
+                        LightSampleContext &prevIntrContext,
+                        bool &passThroughMedium, bool &lastVertexVolume,
+                        openpgl::cpp::PathSegmentStorage* pathSegmentStorage, openpgl::cpp::PathSegment* pathSegmentData,
+                        GuidedBSDF gbsdf, GuidedPhaseFunction gphase, GuidedInscatteredRadiance ginscatteredradiance,
+                        float rr_correction,
+                        SampledSpectrum &transmittanceWeight,
+                        VSPBuffer::Sample &vspSample,
+                        bool guideRR, bool guideVolumeRR,
+                        ContributionEstimate::ContributionEstimateData &ced, SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const;
+
+    inline Float GetPrimaryRayVolumeScatterProbability(const Point2i &pPixel, bool &scatterPrimary) const;
+
+    inline Float GetSecondaryRayVolumeScatterProbability(GuidedPhaseFunction &gphase, Vector3f wi, bool &scatterSecondary) const;
+
+    inline Float GetSecondaryRayVolumeScatterProbability(GuidedBSDF &gbsdf, Vector3f wi, bool &scatterSecondary) const;
+
     SampledSpectrum SampleLd(const Interaction &intr, const GuidedBSDF *bsdf, const GuidedPhaseFunction *phase,
                              const Float survivalProb, SampledWavelengths &lambda, Sampler sampler,
                              SampledSpectrum inv_w_u) const;
