@@ -393,11 +393,14 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
                 }
             }
 
-            tpScaleFactor *= tpScaleFactorSingleStep;
             if (deltaTracking)
                 dist = -std::log(1.0 - u);
 
-            if (t_v_current - dist < ScatterEpsilon || dist == 0) {
+            bool passThrough = t_v_current - dist < ScatterEpsilon || dist == 0;
+            if (VilleminMethod || !passThrough)
+                tpScaleFactor *= tpScaleFactorSingleStep;
+
+            if (passThrough) {
                 if (VilleminMethod) {
                     tpScaleFactor /= 1.0f - FastExp(-t_n + t_v);
                 }
