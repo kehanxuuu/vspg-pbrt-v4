@@ -49,6 +49,8 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
 template <typename ConcreteMedium, typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
                                          const SampledWavelengths &lambda, F callback) {
+    int channelIdx = lambda.ChannelIdx();
+    
     // Normalize ray direction and update _tMax_ accordingly
     tMax *= Length(ray.d);
     ray.d = Normalize(ray.d);
@@ -66,7 +68,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
         if (!seg)
             return T_maj;
         // Handle zero-valued majorant for current segment
-        if (seg->sigma_maj[lambda.ChannelIdx()] == 0) {
+        if (seg->sigma_maj[channelIdx] == 0) {
             Float dt = seg->tMax - seg->tMin;
             // Handle infinite _dt_ for ray majorant segment
             if (IsInf(dt))
@@ -80,9 +82,9 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
         Float tMin = seg->tMin;
         while (true) {
             // Try to generate sample along current majorant segment
-            Float t = tMin + SampleExponential(u, seg->sigma_maj[lambda.ChannelIdx()]);
+            Float t = tMin + SampleExponential(u, seg->sigma_maj[channelIdx]);
             PBRT_DBG("Sampled t = %f from tMin %f u %f sigma_maj[%d] %f\n", t, tMin, u,
-                     lambda.ChannelIdx(), seg->sigma_maj[lambda.ChannelIdx()]);
+                     channelIdx, seg->sigma_maj[channelIdx]);
             u = rng.Uniform<Float>();
             if (t < seg->tMax) {
                 // Call callback function for sample within segment
@@ -106,7 +108,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
                     dt = std::numeric_limits<Float>::max();
 
                 T_maj *= FastExp(-dt * seg->sigma_maj);
-                PBRT_DBG("Past end, added dt %f * maj[%d] %f\n", dt, lambda.ChannelIdx(), seg->sigma_maj[lambda.ChannelIdx()]);
+                PBRT_DBG("Past end, added dt %f * maj[%d] %f\n", dt, channelIdx, seg->sigma_maj[channelIdx]);
                 break;
             }
         }
@@ -115,28 +117,28 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj(Ray ray, Float tMax, Float u, RNG &rng,
 }
 
 template <typename F>
-PBRT_CPU_GPU SampledSpectrum SampleT_maj_resampling(Ray ray, Float tMax, Float u, RNG &rng,
+PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u, RNG &rng,
                                                     const SampledWavelengths &lambda,
-                                                    bool &passThroughMedium,
                                                     bool guideScatterDecision, Float volScatterProb,
                                                     Float &volumeRatioZeroCandidateCompensation,
                                                     Float &majorantScale,
                                                     F callback) {
     auto sample = [&](auto medium) {
         using M = typename std::remove_reference_t<decltype(*medium)>;
-        return SampleT_maj_resampling<M>(ray, tMax, u, rng, lambda, passThroughMedium, guideScatterDecision, volScatterProb, volumeRatioZeroCandidateCompensation, majorantScale, callback);
+        return SampleT_maj_Resampling<M>(ray, tMax, u, rng, lambda, guideScatterDecision, volScatterProb, volumeRatioZeroCandidateCompensation, majorantScale, callback);
     };
     return ray.medium.Dispatch(sample);
 }
 
 template <typename ConcreteMedium, typename F>
-PBRT_CPU_GPU SampledSpectrum SampleT_maj_resampling(Ray ray, Float tMax, Float u, RNG &rng,
+PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u, RNG &rng,
                                                     const SampledWavelengths &lambda,
-                                                    bool &passThroughMedium,
                                                     bool guideScatterDecision, Float volScatterProb,
                                                     Float &volumeRatioZeroCandidateCompensation,
                                                     Float &majorantScale,
                                                     F callback) {
+    int channelIdx = lambda.ChannelIdx();
+    
     // Normalize ray direction and update _tMax_ accordingly
     tMax *= Length(ray.d);
     ray.d = Normalize(ray.d);
@@ -146,25 +148,21 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_resampling(Ray ray, Float tMax, Float u
     typename ConcreteMedium::MajorantIterator iter = medium->SampleRay(ray, tMax, lambda);
 
     auto iter_preprocess = iter;
-    int totalSegmentCount = 0;
     Float totalLength = 0.f;
     while(true) {
         pstd::optional<RayMajorantSegment> seg = iter_preprocess.Next();
         if (!seg)
             break;
 
-        if (seg->sigma_maj[lambda.ChannelIdx()] == 0)
+        if (seg->sigma_maj[channelIdx] == 0)
             continue;
 
-        totalSegmentCount ++;
-        totalLength += seg->sigma_maj[lambda.ChannelIdx()] * (seg->tMax - seg->tMin);
+        totalLength += seg->sigma_maj[channelIdx] * (seg->tMax - seg->tMin);
     }
 
-    if (totalSegmentCount == 0) {
-        passThroughMedium = false;
+    if (totalLength == 0.f) {
         return SampledSpectrum(1.f);
     }
-    passThroughMedium = true;
 
     majorantScale = 1.0f;
     volumeRatioZeroCandidateCompensation = volScatterProb;
@@ -186,8 +184,11 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_resampling(Ray ray, Float tMax, Float u
         pstd::optional<RayMajorantSegment> seg = iter.Next();
         if (!seg)
             return T_maj;
+
+        seg->sigma_maj *= majorantScale;
+
         // Handle zero-valued majorant for current segment
-        if (seg->sigma_maj[lambda.ChannelIdx()] == 0) {
+        if (seg->sigma_maj[channelIdx] == 0) {
             Float dt = seg->tMax - seg->tMin;
             // Handle infinite _dt_ for ray majorant segment
             if (IsInf(dt))
@@ -201,9 +202,9 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_resampling(Ray ray, Float tMax, Float u
         Float tMin = seg->tMin;
         while (true) {
             // Try to generate sample along current majorant segment
-            Float t = tMin + SampleExponential(u, seg->sigma_maj[lambda.ChannelIdx()]);
+            Float t = tMin + SampleExponential(u, seg->sigma_maj[channelIdx]);
             PBRT_DBG("Sampled t = %f from tMin %f u %f sigma_maj[%d] %f\n", t, tMin, u,
-                     lambda.ChannelIdx(), seg->sigma_maj[lambda.ChannelIdx()]);
+                     channelIdx, seg->sigma_maj[channelIdx]);
             u = rng.Uniform<Float>();
             if (t < seg->tMax) {
                 // Call callback function for sample within segment
@@ -227,7 +228,233 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_resampling(Ray ray, Float tMax, Float u
                     dt = std::numeric_limits<Float>::max();
 
                 T_maj *= FastExp(-dt * seg->sigma_maj);
-                PBRT_DBG("Past end, added dt %f * maj[%d] %f\n", dt, lambda.ChannelIdx(), seg->sigma_maj[lambda.ChannelIdx()]);
+                PBRT_DBG("Past end, added dt %f * maj[%d] %f\n", dt, channelIdx, seg->sigma_maj[channelIdx]);
+                break;
+            }
+        }
+    }
+    return SampledSpectrum(1.f);
+}
+
+template <typename F>
+PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, Float u, RNG &rng,
+                                                           const SampledWavelengths &lambda,
+                                                           bool guideScatterDecision, Float vsp, Float vspMISRatio,
+                                                           bool VilleminMethod, bool collProbBias,
+                                                           SampledSpectrum &beta_factor,
+                                                           SampledSpectrum &r_u_factor,
+                                                           F callback) {
+    auto sample = [&](auto medium) {
+        using M = typename std::remove_reference_t<decltype(*medium)>;
+        return SampleT_maj_OpticalDepthSpace<M>(ray, tMax, u, rng, lambda, guideScatterDecision, vsp, vspMISRatio, VilleminMethod, collProbBias, beta_factor, r_u_factor, callback);
+    };
+    return ray.medium.Dispatch(sample);
+}
+
+template <typename ConcreteMedium, typename F>
+PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, Float u, RNG &rng,
+                                                    const SampledWavelengths &lambda,
+                                                    bool guideScatterDecision, Float vsp, Float vspMISRatio,
+                                                    bool VilleminMethod, bool collProbBias,
+                                                    SampledSpectrum &beta_factor,
+                                                    SampledSpectrum &r_u_factor,
+                                                    F callback) {
+    // Sample distance in optical depth space, ignore majorant grid bounds
+
+    // VilleminMethod = true: can enable or disable collProbBias
+    // VilleminMethod = false: our method, default with collision probability biasing
+    //      If homogeneous volume -> stop at the first bounce and automatically get the analytical solution
+
+    int channelIdx = lambda.ChannelIdx();
+    
+    if (!guideScatterDecision || vspMISRatio == 0.f)
+        return SampleT_maj(ray, tMax, u, rng, lambda, callback);
+
+    // Normalize ray direction and update _tMax_ accordingly
+    tMax *= Length(ray.d);
+    ray.d = Normalize(ray.d);
+
+    // Initialize _MajorantIterator_ for ray majorant sampling
+    ConcreteMedium *medium = ray.medium.Cast<ConcreteMedium>();
+    typename ConcreteMedium::MajorantIterator iter = medium->SampleRay(ray, tMax, lambda);
+
+    auto iter_preprocess = iter;
+    Float t_v = 0.f; // In optical depth space
+    while(true) {
+        pstd::optional<RayMajorantSegment> seg = iter_preprocess.Next();
+        if (!seg)
+            break;
+
+        if (seg->sigma_maj[channelIdx] == 0)
+            continue;
+
+        t_v += seg->sigma_maj[channelIdx] * (seg->tMax - seg->tMin);
+    }
+
+    if (t_v == 0.f) {
+        return SampledSpectrum(1.f);
+    }
+
+    Float OneMinusENegTv = 1.f - FastExp(-t_v);
+    Float t_n=-1.f, t_n_current=-1.f;
+    if (VilleminMethod) {
+        // Dose not support "decreasing" vsp (compared to 1 - majorant transmittance)
+        if (vsp < 1 - FastExp(-t_v))
+            return SampleT_maj(ray, tMax, u, rng, lambda, callback);
+        else {
+            t_n = -std::log(1.0 - OneMinusENegTv / vsp);
+            t_n_current = t_n;
+        }
+    }
+
+    SampledSpectrum T_maj(1.f), tpScaleFactor(1.f);
+    Float t_v_current = t_v;
+    Float remainingDist = 0;
+
+    bool deltaTracking = false;
+    if (u > vspMISRatio) {
+        deltaTracking = true;
+        u = (u - vspMISRatio) / (1 - vspMISRatio);
+    }
+    else {
+        u /= vspMISRatio;
+    }
+
+    // Generate ray majorant samples until termination
+    bool done = false;
+    int count = 0;
+    bool overTheEnd = false;
+    const Float ScatterEpsilon = 1e-5;
+    while (!done) {
+        // Get next majorant segment from iterator and sample it
+        pstd::optional<RayMajorantSegment> seg = iter.Next();
+        if (!seg)
+            return T_maj;
+        // Handle zero-valued majorant for current segment
+        if (seg->sigma_maj[channelIdx] == 0 || overTheEnd) {
+            Float dt = seg->tMax - seg->tMin;
+            // Handle infinite _dt_ for ray majorant segment
+            if (IsInf(dt))
+                dt = std::numeric_limits<Float>::max();
+
+            T_maj *= FastExp(-dt * seg->sigma_maj);
+            continue;
+        }
+
+        // Generate samples along current majorant segment
+        Float tMin = seg->tMin;
+        SampledSpectrum normalizedMaj = seg->sigma_maj / seg->sigma_maj[channelIdx];
+
+        if (remainingDist > 0) {
+            tMin += remainingDist / seg->sigma_maj[channelIdx];
+            if (tMin > seg->tMax + ScatterEpsilon) {
+                Float dist = (seg->tMax - seg->tMin) * seg->sigma_maj[channelIdx];
+                t_v_current -= dist;
+                t_n_current -= dist;
+                remainingDist -= dist;
+                T_maj *= FastExp(-(seg->tMax - seg->tMin) * seg->sigma_maj);
+                continue;
+            }
+
+            t_v_current -= remainingDist;
+            t_n_current -= remainingDist;
+            remainingDist = 0;
+            T_maj *= FastExp(-(tMin - seg->tMin) * seg->sigma_maj);
+            MediumProperties mp = medium->SamplePoint(ray(tMin), lambda);
+
+            r_u_factor = SampledSpectrum(vspMISRatio) / tpScaleFactor + SampledSpectrum(1 - vspMISRatio);
+            if (!callback(ray(tMin), mp, seg->sigma_maj, T_maj)) {
+                // Returning out of doubly-nested while loop is not as good perf. wise
+                // on the GPU vs using "done" here.
+                break;
+            }
+            T_maj = SampledSpectrum(1.f);
+        }
+        
+        while (true) {
+            count ++;
+            // Try to generate sample along current majorant segment
+            Float dist = std::numeric_limits<Float>::max();
+            SampledSpectrum tpScaleFactorSingleStep;
+            if (VilleminMethod) {
+                tpScaleFactorSingleStep = 1.0f - FastExp(-t_n_current * normalizedMaj);
+                if (!deltaTracking)
+                    dist = -std::log(1.0 - u * tpScaleFactorSingleStep[channelIdx]);
+            }
+            else {
+                tpScaleFactorSingleStep = (1.0f - FastExp(-t_v_current * normalizedMaj)) / vsp;
+                if (!deltaTracking) {
+                    if (u < vsp) {
+                        // Sample inside the volume
+                        dist = -std::log(1.0 - u * tpScaleFactorSingleStep[channelIdx]);
+                    }
+                    // Else sample on the surface
+                    // No need to set dist because it is already FLOAT_MAX (out of volume boundary)
+                }
+            }
+
+            tpScaleFactor *= tpScaleFactorSingleStep;
+            if (deltaTracking)
+                dist = -std::log(1.0 - u);
+
+            if (t_v_current - dist < ScatterEpsilon || dist == 0) {
+                if (VilleminMethod) {
+                    tpScaleFactor /= 1.0f - FastExp(-t_n + t_v);
+                }
+                else {
+                    tpScaleFactor *= FastExp(-t_v_current * normalizedMaj) / (1 - vsp);
+                }
+                r_u_factor = SampledSpectrum(vspMISRatio) / tpScaleFactor + SampledSpectrum(1 - vspMISRatio);
+                overTheEnd = true;
+                T_maj *= FastExp(- (seg->tMax - tMin) * seg->sigma_maj);
+                break;
+            }
+
+            Float t = tMin + dist / seg->sigma_maj[channelIdx];
+            
+            PBRT_DBG("Sampled t = %f from tMin %f u %f sigma_maj[%d] %f\n", t, tMin, u,
+                     channelIdx, seg->sigma_maj[channelIdx]);
+            u = rng.Uniform<Float>();
+            if (t <= seg->tMax + ScatterEpsilon) {
+                if (count > 10000) {
+                    std::cout << "Warning: count = " << count << " is too large, must be buggy somewhere!!" << std::endl;
+                    std::cout << "Count-related variables: " << dist << " " << t_v_current << " " << std::endl;
+                    break;
+                }
+                t_v_current -= dist;
+                t_n_current -= dist;
+                remainingDist = 0;
+                
+                // Call callback function for sample within segment
+                PBRT_DBG("t < seg->tMax\n");
+                T_maj *= FastExp(-(t - tMin) * seg->sigma_maj);
+                MediumProperties mp = medium->SamplePoint(ray(t), lambda);
+
+                r_u_factor = SampledSpectrum(vspMISRatio) / tpScaleFactor + SampledSpectrum(1 - vspMISRatio);
+                if (!callback(ray(t), mp, seg->sigma_maj, T_maj)) {
+                    // Returning out of doubly-nested while loop is not as good perf. wise
+                    // on the GPU vs using "done" here.
+                    done = true;
+                    break;
+                }
+                T_maj = SampledSpectrum(1.f);
+                tMin = t;
+
+            } else {
+                // Handle sample past end of majorant segment
+                Float dt = seg->tMax - tMin;
+                // Handle infinite _dt_ for ray majorant segment
+                if (IsInf(dt))
+                    dt = std::numeric_limits<Float>::max();
+
+                T_maj *= FastExp(-dt * seg->sigma_maj);
+                PBRT_DBG("Past end, added dt %f * maj[%d] %f\n", dt, channelIdx, seg->sigma_maj[channelIdx]);
+
+                Float distWithinThisSeg = dt * seg->sigma_maj[channelIdx];
+                remainingDist = dist - distWithinThisSeg;
+                t_v_current -= distWithinThisSeg;
+                t_n_current -= distWithinThisSeg;
+                
                 break;
             }
         }

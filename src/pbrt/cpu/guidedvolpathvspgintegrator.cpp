@@ -606,14 +606,19 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         }
     }
 
-    if (guideSettings.resampling) {
+    if (guideScatterDecision)
+        vsp = std::max(std::min(vsp, 0.999f), 0.001f);
+
+    if (guideSettings.resampling && !ray.medium.IsHomogeneous()) {
+        // Analytical VSPG for homogeneous volume
+
         Float volumeRatioCompensated, majorantScale;
         Float weightSum = 0;
         SampledSpectrum trRatioEst(1.f), beta_resampling(1.f), r_u_resampling(1.f);
         CandidateData selectedCandidate;
 
-        SampledSpectrum T_maj = SampleT_maj_resampling(ray, tMax, sampler.Get1D(), rng, lambda,
-                passThroughMedium, guideScatterDecision, vsp, volumeRatioCompensated, majorantScale,
+        SampledSpectrum T_maj = SampleT_maj_Resampling(ray, tMax, sampler.Get1D(), rng, lambda,
+                guideScatterDecision, vsp, volumeRatioCompensated, majorantScale,
                 [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj) {
                     SampledSpectrum sigma_t = mp.sigma_s + mp.sigma_a;
                     SampledSpectrum sigma_n = ClampZero(sigma_maj - sigma_t);
@@ -649,10 +654,6 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     trRatioEst *= sigma_n / sigma_maj;
                     return true;
                 });
-
-        if (!passThroughMedium) {
-            return;
-        }
 
         beta_resampling *= T_maj / T_maj[channelIdx];
         r_u_resampling *= T_maj / T_maj[channelIdx];
@@ -811,9 +812,12 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         }
     }
     else {
-        SampledSpectrum T_maj = SampleT_maj(ray, tMax, sampler.Get1D(), rng, lambda,
-                                            [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj,
-                                                    SampledSpectrum T_maj) {
+        SampledSpectrum beta_factor(1.f), r_u_factor(1.f);
+        SampledSpectrum T_maj = SampleT_maj_OpticalDepthSpace(ray, tMax, sampler.Get1D(), rng, lambda,
+                                                              guideScatterDecision, vsp, guideSettings.vspMISRatio,
+                                                              guideSettings.VilleminMethod, guideSettings.collisionProbabilityBias,
+                                                              beta_factor, r_u_factor,
+                                            [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj) {
                     // Handle medium scattering event for ray
                     if (!beta) {
                         terminated = true;
@@ -892,6 +896,11 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                         r_u *= T_maj * sigma_t / pdf;
 #endif
                         transmittanceWeight *= (T_maj * mp.sigma_s) / pdf;
+
+                        beta *= beta_factor;
+                        r_u *= r_u_factor;
+                        transmittanceWeight *= beta_factor / r_u_factor[channelIdx];
+
                         guiding_addTransmittanceWeight(pathSegmentData, transmittanceWeight, lambda, colorSpace);
                         pathSegmentData = guiding_newVolumePathSegment(pathSegmentStorage, p, -ray.d);
 
@@ -987,6 +996,11 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
             beta *= T_maj / T_maj[channelIdx];
             r_u *= T_maj / T_maj[channelIdx];
             r_l *= T_maj / T_maj[channelIdx];
+
+            beta *= beta_factor;
+            r_u *= r_u_factor;
+            r_l *= r_u_factor;
+            transmittanceWeight *= beta_factor / r_u_factor[channelIdx];
         }
     }
     return;
@@ -1160,46 +1174,49 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     int maxDepth = parameters.GetOneInt("maxdepth", 5);
     int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
     bool useNEE = parameters.GetOneBool("usenee", true);
-    GuidingSettings guidingSettings;
-    guidingSettings.knnLookup = parameters.GetOneBool("knnlookup", true);
-    guidingSettings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
-    guidingSettings.guideVolume = parameters.GetOneBool("volumeguiding", true);
-    guidingSettings.guideRR = parameters.GetOneBool("rrguiding", false);
-    guidingSettings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
-    guidingSettings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);
+    GuidingSettings guideSettings;
+    guideSettings.knnLookup = parameters.GetOneBool("knnlookup", true);
+    guideSettings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
+    guideSettings.guideVolume = parameters.GetOneBool("volumeguiding", true);
+    guideSettings.guideRR = parameters.GetOneBool("rrguiding", false);
+    guideSettings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
+    guideSettings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);
 
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
-    guidingSettings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
+    guideSettings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
     std::string strVolumeGuidingType = parameters.GetOneString("volumeguidingtype", "mis");
-    guidingSettings.volumeGuidingType = strVolumeGuidingType == "mis" ? EGuideMIS : EGuideRIS;
+    guideSettings.volumeGuidingType = strVolumeGuidingType == "mis" ? EGuideMIS : EGuideRIS;
 
-    guidingSettings.storeGuidingCache = parameters.GetOneBool("storeGuidingCache", false);
-    guidingSettings.loadGuidingCache = parameters.GetOneBool("loadGuidingCache", false);
-    guidingSettings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
+    guideSettings.storeGuidingCache = parameters.GetOneBool("storeGuidingCache", false);
+    guideSettings.loadGuidingCache = parameters.GetOneBool("loadGuidingCache", false);
+    guideSettings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
 
     // VSP guiding
-    guidingSettings.guidePrimaryVSP = parameters.GetOneBool("vspprimaryguiding", false);
-    guidingSettings.guideSecondaryVSP = parameters.GetOneBool("vspsecondaryguiding", false);
-    guidingSettings.vspMISRatio = parameters.GetOneFloat("vspmisratio", 0.5f);
-    guidingSettings.vspCriterion = parameters.GetOneInt("vspcriterion", 0);
-    guidingSettings.resampling = parameters.GetOneBool("vspresampling", false);
-    guidingSettings.productDistanceGuiding = parameters.GetOneBool("productdistanceguiding", false);
+    guideSettings.guidePrimaryVSP = parameters.GetOneBool("vspprimaryguiding", false);
+    guideSettings.guideSecondaryVSP = parameters.GetOneBool("vspsecondaryguiding", false);
+    guideSettings.vspMISRatio = parameters.GetOneFloat("vspmisratio", 0.5f);
+    guideSettings.vspCriterion = parameters.GetOneInt("vspcriterion", 0);
+    guideSettings.resampling = parameters.GetOneBool("vspresampling", false);
+    guideSettings.productDistanceGuiding = parameters.GetOneBool("productdistanceguiding", false);
+
+    guideSettings.VilleminMethod = parameters.GetOneBool("Villemin", false);
+    guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
 
     // VSP buffer (screen space, for primary ray VSPG)
-    guidingSettings.useVSPBuffer = parameters.GetOneBool("useVSPBuffer", false);
-    guidingSettings.storeVSPBuffer = parameters.GetOneBool("storeVSPBuffer", false);
-    guidingSettings.loadVSPBuffer = parameters.GetOneBool("loadVSPBuffer", false);
-    guidingSettings.vspBufferFileName = parameters.GetOneString("vspBufferFileName", "");
+    guideSettings.useVSPBuffer = parameters.GetOneBool("useVSPBuffer", false);
+    guideSettings.storeVSPBuffer = parameters.GetOneBool("storeVSPBuffer", false);
+    guideSettings.loadVSPBuffer = parameters.GetOneBool("loadVSPBuffer", false);
+    guideSettings.vspBufferFileName = parameters.GetOneString("vspBufferFileName", "");
 
     // Guided RR
-    guidingSettings.storeContributionEstimate = parameters.GetOneBool("storeContributionEstimate", false);
-    guidingSettings.loadContributionEstimate = parameters.GetOneBool("loadContributionEstimate", false);
-    guidingSettings.contributionEstimateFileName = parameters.GetOneString("contributionEstimateFileName", "");
+    guideSettings.storeContributionEstimate = parameters.GetOneBool("storeContributionEstimate", false);
+    guideSettings.loadContributionEstimate = parameters.GetOneBool("loadContributionEstimate", false);
+    guideSettings.contributionEstimateFileName = parameters.GetOneString("contributionEstimateFileName", "");
 
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);
 
-    return std::make_unique<GuidedVolPathVSPGIntegrator>(maxDepth, minRRDepth, useNEE, guidingSettings, colorSpace, camera, sampler, aggregate, lights, lightStrategy, regularize);
+    return std::make_unique<GuidedVolPathVSPGIntegrator>(maxDepth, minRRDepth, useNEE, guideSettings, colorSpace, camera, sampler, aggregate, lights, lightStrategy, regularize);
 }
 #endif
 

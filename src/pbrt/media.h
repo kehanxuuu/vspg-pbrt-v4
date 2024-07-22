@@ -250,6 +250,9 @@ class HomogeneousMedium {
     bool IsEmissive() const { return Le_spec.MaxValue() > 0; }
 
     PBRT_CPU_GPU
+    bool IsHomogeneous() const { return true; }
+
+    PBRT_CPU_GPU
     MediumProperties SamplePoint(Point3f p, const SampledWavelengths &lambda) const {
         SampledSpectrum sigma_a = sigma_a_spec.Sample(lambda);
         SampledSpectrum sigma_s = sigma_s_spec.Sample(lambda);
@@ -305,6 +308,9 @@ class GridMedium {
 
     PBRT_CPU_GPU
     bool IsEmissive() const { return isEmissive; }
+
+    PBRT_CPU_GPU
+    bool IsHomogeneous() const { return false; }
 
     PBRT_CPU_GPU
     MediumProperties SamplePoint(Point3f p, const SampledWavelengths &lambda) const {
@@ -405,6 +411,9 @@ class RGBGridMedium {
     bool IsEmissive() const { return LeGrid && LeScale > 0; }
 
     PBRT_CPU_GPU
+    bool IsHomogeneous() const { return false; }
+
+    PBRT_CPU_GPU
     MediumProperties SamplePoint(Point3f p, const SampledWavelengths &lambda) const {
         p = renderFromMedium.ApplyInverse(p);
         p = Point3f(bounds.Offset(p));
@@ -501,6 +510,9 @@ class CloudMedium {
 
     PBRT_CPU_GPU
     bool IsEmissive() const { return false; }
+
+    PBRT_CPU_GPU
+    bool IsHomogeneous() const { return false; }
 
     PBRT_CPU_GPU
     MediumProperties SamplePoint(Point3f p, const SampledWavelengths &lambda) const {
@@ -666,6 +678,9 @@ class NanoVDBMedium {
     bool IsEmissive() const { return temperatureFloatGrid && LeScale > 0; }
 
     PBRT_CPU_GPU
+    bool IsHomogeneous() const { return false; }
+
+    PBRT_CPU_GPU
     MediumProperties SamplePoint(Point3f p, const SampledWavelengths &lambda) const {
         // Sample spectra for grid $\sigmaa$ and $\sigmas$
         SampledSpectrum sigma_a = sigma_a_spec.Sample(lambda);
@@ -779,6 +794,11 @@ inline RayMajorantIterator Medium::SampleRay(Ray ray, Float tMax,
         return RayMajorantIterator(iter);
     };
     return DispatchCPU(sample);
+}
+
+inline bool Medium::IsHomogeneous() const{
+    auto homo = [&](auto ptr) { return ptr->IsHomogeneous(); };
+    return Dispatch(homo);
 }
 
 }  // namespace pbrt

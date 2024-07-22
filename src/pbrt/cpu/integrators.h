@@ -507,6 +507,8 @@ public:
         int vspCriterion {0}; // 0: contribution-based, 1: variance-based
         bool resampling {false};
         bool productDistanceGuiding {false};
+        bool VilleminMethod {false};
+        bool collisionProbabilityBias {false};
 
         bool storeContributionEstimate {false};
         bool loadContributionEstimate {false};

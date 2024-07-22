@@ -98,6 +98,9 @@ class Medium
     bool IsEmissive() const;
 
     PBRT_CPU_GPU
+    bool IsHomogeneous() const;
+
+    PBRT_CPU_GPU
     MediumProperties SamplePoint(Point3f p, const SampledWavelengths &lambda) const;
 
     // Medium Public Methods
