@@ -68,7 +68,6 @@ class ParserTarget {
                          FileLoc loc) = 0;
 
     virtual void WorldBegin(FileLoc loc) = 0;
-    virtual void WorldEnd(FileLoc loc) = 0;
     virtual void AttributeBegin(FileLoc loc) = 0;
     virtual void AttributeEnd(FileLoc loc) = 0;
     virtual void Attribute(const std::string &target, ParsedParameterVector params,
@@ -234,7 +233,6 @@ class FormattingParserTarget : public ParserTarget {
     void MediumInterface(const std::string &insideName, const std::string &outsideName,
                          FileLoc loc);
     void WorldBegin(FileLoc loc);
-    void WorldEnd(FileLoc loc);
     void AttributeBegin(FileLoc loc);
     void AttributeEnd(FileLoc loc);
     void Attribute(const std::string &target, ParsedParameterVector params, FileLoc loc);

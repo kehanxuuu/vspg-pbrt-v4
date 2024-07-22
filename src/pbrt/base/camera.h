@@ -56,8 +56,6 @@ class Camera : public TaggedPointer<PerspectiveCamera, OrthographicCamera,
 
     void InitMetadata(ImageMetadata *metadata) const;
 
-    void SetMedium(Medium medium);
-
     PBRT_CPU_GPU inline const CameraTransform &GetCameraTransform() const;
 
     PBRT_CPU_GPU
