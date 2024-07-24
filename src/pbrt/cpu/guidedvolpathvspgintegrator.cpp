@@ -117,29 +117,44 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
         if (FileExists(guideSettings.vspBufferFileName)) {
             vspBuffer = new VSPBuffer(guideSettings.vspBufferFileName);
             vspBufferReady = true;
-            calulateVSPBuffer = false;
+            calculateVSPBuffer = false;
         } else {
             std::cout << "Warning: VSP buffer file does not exists: vspBufferFileName = " << guideSettings.vspBufferFileName << std::endl;
         }
     }
 
-    if (!vspBufferReady && guideSettings.useVSPBuffer) {
-        calulateVSPBuffer = true;
+    if (!vspBufferReady && (guideSettings.storeVSPBuffer || guideSettings.guidePrimaryVSP)) {
+        calculateVSPBuffer = true;
         vspBuffer = new VSPBuffer(resolution);
+    }
+
+    if (guideSettings.loadTrBuffer) {
+        if (FileExists(guideSettings.trBufferFileName)) {
+            trBuffer = new TrBuffer(guideSettings.trBufferFileName);
+            trBufferLoad = true;
+            calculateTrBuffer = false;
+        } else {
+            std::cout << "Warning: Tr buffer file does not exists: trBufferFileName = " << guideSettings.trBufferFileName << std::endl;
+        }
+    }
+
+    if (!trBufferLoad && (guideSettings.storeTrBuffer || (guideSettings.guidePrimaryVSP && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias))) {
+        calculateTrBuffer = true;
+        trBuffer = new TrBuffer(resolution);
     }
 
     if (guideSettings.loadContributionEstimate) {
         if (FileExists(guideSettings.contributionEstimateFileName)) {
             contributionEstimate = new ContributionEstimate(guideSettings.contributionEstimateFileName);
             contributionEstimateReady = true;
-            calulateContributionEstimate = false;
+            calculateContributionEstimate = false;
         } else {
             std::cout << "Warning: Contribution estimate file does not exists: contributionEstimateFileName = " << guideSettings.contributionEstimateFileName << std::endl;
         }
     }
 
     if (!contributionEstimateReady && (guideSettings.storeContributionEstimate || guideSettings.guideRR)){
-        calulateContributionEstimate = true;
+        calculateContributionEstimate = true;
         contributionEstimate = new ContributionEstimate(resolution);
     }
 
@@ -156,8 +171,12 @@ GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
         guiding_field->Store(guideSettings.guidingCacheFileName);
     }
 
-    if (guideSettings.useVSPBuffer && guideSettings.storeVSPBuffer){
+    if (guideSettings.storeVSPBuffer){
         vspBuffer->Store(guideSettings.vspBufferFileName);
+    }
+
+    if (guideSettings.storeTrBuffer){
+        trBuffer->Store(guideSettings.trBufferFileName);
     }
 
     if (guideSettings.storeContributionEstimate){
@@ -169,6 +188,7 @@ GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
     delete guiding_field;
     delete contributionEstimate;
     delete vspBuffer;
+    delete trBuffer;
 }
 
 void GuidedVolPathVSPGIntegrator::PostProcessWave() {
@@ -189,16 +209,18 @@ void GuidedVolPathVSPGIntegrator::PostProcessWave() {
 
     guiding_sampleStorage->Clear();
 
-    if (calulateVSPBuffer && waveCounter == std::pow(2.0f, vspBufferWave)) {
-        vspBuffer->Update();
-        vspBufferReady = true;
-        vspBufferWave++;
-    }
+    if (waveCounter == std::pow(2.0f, bufferWave)) {
+        if (calculateVSPBuffer) {
+            vspBuffer->Update();
+            vspBufferReady = true;
+        }
 
-    if (calulateContributionEstimate && waveCounter == std::pow(2.0f, contributionEstimateWave)) {
-        contributionEstimate->Update();
-        contributionEstimateReady = true;
-        contributionEstimateWave++;
+        if (calculateContributionEstimate) {
+            contributionEstimate->Update();
+            contributionEstimateReady = true;
+        }
+
+        bufferWave++;
     }
 }
 
@@ -252,7 +274,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         // Sample segment of volumetric scattering path
         PBRT_DBG("%s\n", StringPrintf("Path tracer depth %d, current L = %s, beta = %s\n",
                                       depth, L, beta)
-                .c_str());
+                .c_str())
         pstd::optional<ShapeIntersection> si = Intersect(ray);
 
         SampledSpectrum transmittanceWeight = SampledSpectrum(1.0f);
@@ -347,7 +369,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         add_direct_contribution = false;
 
         // Initialize _visibleSurf_ at first intersection
-        if (depth == 0 && (visibleSurf || calulateVSPBuffer || calulateContributionEstimate)) {
+        if (depth == 0 && (visibleSurf || calculateVSPBuffer || calculateContributionEstimate)) {
             // Estimate BSDF's albedo
             // Define sample arrays _ucRho_ and _uRho_ for reflectance estimate
             constexpr int nRhoSamples = 16;
@@ -542,7 +564,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
 
     pathLength << depth;
 
-    if(calulateVSPBuffer)
+    if(calculateVSPBuffer)
     {
 #if defined(PBRT_RGB_RENDERING)
         vspSample.color = L.ToRGB(lambda, *colorSpace);
@@ -552,7 +574,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         vspBuffer->AddSample(pPixel, vspSample);
     }
 
-    if (calulateContributionEstimate)
+    if (calculateContributionEstimate)
     {
 #if defined(PBRT_RGB_RENDERING)
         ced.color = L.ToRGB(lambda, *colorSpace);
@@ -657,6 +679,9 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
         beta_resampling *= T_maj / T_maj[channelIdx];
         r_u_resampling *= T_maj / T_maj[channelIdx];
+
+        if (depth == 0 && calculateTrBuffer)
+            trBuffer->AddSample(pPixel, trRatioEst.ToRGB(lambda, *colorSpace));
 
         Float trRatioEstScalar = trRatioEst[channelIdx];
         CandidateData surfaceCandidate(ray(tMax), MediumProperties(),
@@ -815,7 +840,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         SampledSpectrum beta_factor(1.f), r_u_factor(1.f);
         SampledSpectrum T_maj = SampleT_maj_OpticalDepthSpace(ray, tMax, sampler.Get1D(), rng, lambda,
                                                               guideScatterDecision, vsp, guideSettings.vspMISRatio,
-                                                              guideSettings.VilleminMethod, guideSettings.collisionProbabilityBias,
+                                                              guideSettings.VilleminMethod,
                                                               beta_factor, r_u_factor,
                                             [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj) {
                     // Handle medium scattering event for ray
@@ -858,9 +883,17 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     SampledSpectrum sigma_t = mp.sigma_s + mp.sigma_a;
                     SampledSpectrum albedo = mp.sigma_s / sigma_t;
                     Float pScatter = sigma_t[channelIdx] / sigma_maj[channelIdx];
-                    Float pNull = std::max<Float>(0, 1 - pScatter);
+
+                    if (depth == 0 && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias && trBufferLoad) {
+                        Float trEstCache = trBuffer->GetTransmittance(pPixel)[channelIdx];
+                        Float gamma = 1 + trEstCache;
+                        pScatter = pow(pScatter, 1 / gamma);
+                    }
 
                     CHECK_GE(1 - pScatter, -1e-6);
+
+                    Float pNull = std::max<Float>(0, 1 - pScatter);
+
                     // Sample medium scattering event type and update path
                     Float um = rng.Uniform<Float>();
                     int mode = SampleDiscrete({pScatter, pNull}, um);
@@ -1203,10 +1236,14 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
 
     // VSP buffer (screen space, for primary ray VSPG)
-    guideSettings.useVSPBuffer = parameters.GetOneBool("useVSPBuffer", false);
     guideSettings.storeVSPBuffer = parameters.GetOneBool("storeVSPBuffer", false);
     guideSettings.loadVSPBuffer = parameters.GetOneBool("loadVSPBuffer", false);
     guideSettings.vspBufferFileName = parameters.GetOneString("vspBufferFileName", "");
+
+    // Transmittance buffer (screen space, for primary ray VSPG)
+    guideSettings.storeTrBuffer = parameters.GetOneBool("storeTrBuffer", false);
+    guideSettings.loadTrBuffer = parameters.GetOneBool("loadTrBuffer", false);
+    guideSettings.trBufferFileName = parameters.GetOneString("trBufferFileName", "");
 
     // Guided RR
     guideSettings.storeContributionEstimate = parameters.GetOneBool("storeContributionEstimate", false);

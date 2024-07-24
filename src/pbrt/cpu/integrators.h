@@ -496,10 +496,13 @@ public:
         bool loadGuidingCache {false};
         std::string guidingCacheFileName {""};
 
-        bool useVSPBuffer {false};
         bool storeVSPBuffer {false};
         bool loadVSPBuffer {false};
         std::string vspBufferFileName {""};
+
+        bool storeTrBuffer {false};
+        bool loadTrBuffer {false};
+        std::string trBufferFileName {""};
 
         bool guidePrimaryVSP {false};
         bool guideSecondaryVSP {false};
@@ -608,13 +611,17 @@ private:
 
     VSPBuffer* vspBuffer {nullptr};
     bool vspBufferReady {false};
-    bool calulateVSPBuffer {false};
-    int vspBufferWave {0};
+    bool calculateVSPBuffer {false};
+
+    TrBuffer* trBuffer {nullptr};
+    bool trBufferLoad {false};
+    bool calculateTrBuffer {false};
 
     ContributionEstimate* contributionEstimate {nullptr};
     bool contributionEstimateReady {false};
-    bool calulateContributionEstimate {false};
-    int contributionEstimateWave {0};
+    bool calculateContributionEstimate {false};
+
+    int bufferWave {0};
 
     int waveCounter {0};
 };

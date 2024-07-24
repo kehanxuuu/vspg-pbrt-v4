@@ -240,13 +240,13 @@ template <typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, Float u, RNG &rng,
                                                            const SampledWavelengths &lambda,
                                                            bool guideScatterDecision, Float vsp, Float vspMISRatio,
-                                                           bool VilleminMethod, bool collProbBias,
+                                                           bool VilleminMethod,
                                                            SampledSpectrum &beta_factor,
                                                            SampledSpectrum &r_u_factor,
                                                            F callback) {
     auto sample = [&](auto medium) {
         using M = typename std::remove_reference_t<decltype(*medium)>;
-        return SampleT_maj_OpticalDepthSpace<M>(ray, tMax, u, rng, lambda, guideScatterDecision, vsp, vspMISRatio, VilleminMethod, collProbBias, beta_factor, r_u_factor, callback);
+        return SampleT_maj_OpticalDepthSpace<M>(ray, tMax, u, rng, lambda, guideScatterDecision, vsp, vspMISRatio, VilleminMethod, beta_factor, r_u_factor, callback);
     };
     return ray.medium.Dispatch(sample);
 }
@@ -255,7 +255,7 @@ template <typename ConcreteMedium, typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, Float u, RNG &rng,
                                                     const SampledWavelengths &lambda,
                                                     bool guideScatterDecision, Float vsp, Float vspMISRatio,
-                                                    bool VilleminMethod, bool collProbBias,
+                                                    bool VilleminMethod,
                                                     SampledSpectrum &beta_factor,
                                                     SampledSpectrum &r_u_factor,
                                                     F callback) {
