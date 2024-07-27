@@ -225,6 +225,10 @@ include(ExternalProject)
     message (STATUS "Open Image Denoise not found; building it from scratch.")
     message(STATUS "ISPC_EXECUTABLE = ${ISPC_EXECUTABLE}")
     
+    if(NOT ISPC_EXECUTABLE)
+      set(GET_ISPC ON)
+      include(get_ispc)
+    endif()
     set(OIDN_ARGS "")
 
     #set(TBB_ROOT ${CMAKE_CURRENT_BINARY_DIR}/tbb)
@@ -274,6 +278,7 @@ include(ExternalProject)
     ExternalProject_Add_StepDependencies(OIDN
     configure
       TBB
+      $<$<BOOL:${GET_ISPC}>:ispc>
     )
 
     #add_dependencies(OIDN tbb)
