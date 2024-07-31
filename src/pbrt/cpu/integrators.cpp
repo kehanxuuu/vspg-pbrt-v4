@@ -4235,6 +4235,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
                         transmittanceWeight *= (T_maj * mp.sigma_s) / pdf;
                         guiding_addTransmittanceWeight(pathSegmentData, transmittanceWeight, lambda, colorSpace);
                         pathSegmentData = guiding_newVolumePathSegment(pathSegmentStorage, p, -ray.d);
+                        transmittanceWeight = SampledSpectrum(1.0f);
 
                         if (beta && r_u) {
                             // Sample direct lighting at volume-scattering event
@@ -4356,6 +4357,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(RayDifferential ray, SampledWaveleng
         }
 
         pathSegmentData = guiding_newSurfacePathSegment(pathSegmentStorage, ray, si);
+        transmittanceWeight = SampledSpectrum(1.0f);
 
         if(add_direct_contribution)
         {
