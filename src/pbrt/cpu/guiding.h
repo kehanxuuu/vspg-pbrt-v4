@@ -35,57 +35,19 @@ inline Vector3f spectral_to_vec3(const SampledSpectrum& spec, const SampledWavel
 #endif
 }
 
-
-    inline Float StandardRussianRouletteSurvivalProbability(const SampledSpectrum &beta, const Float etaScale){
-        return beta.MaxComponentValue() * etaScale;
+struct OPGLVector3f : public pgl_vec3f {
+    OPGLVector3f(const Vector3f& v) {
+        x = v[0]; 
+        y = v[1];
+        z = v[2];
     }
 
-
-    inline Float GuidedRussianRouletteProbability(const SampledSpectrum &beta, const SampledSpectrum &adjoint, const SampledSpectrum &referenceEstimate){
-
-        //if(!adjoint.isValid() || !throughput.isValid()|| !referenceEstimate.isValid() ){
-        //    SLog(EInfo, "throughput: %s \t adjoint: %s \t referenceEstimate: %s",throughput.toString().c_str(), adjoint.toString().c_str(),referenceEstimate.toString().c_str());      
-        //}
-
-        //SAssert(throughput.isValid());
-        //Guiding2_Assert(adjoint.isValid());
-        //SAssert(referenceEstimate.isValid());
-
-        Float survivalProb = 1.0f;
-        if(adjoint.IsValid() && !adjoint.IsZero()){
-            const Float s = 5.0f;
-            // weight window center
-            SampledSpectrum Cww = referenceEstimate/adjoint;
-            Cww[0] = adjoint[0] > 0.f ? Cww[0]: 0.f;
-            Cww[1] = adjoint[1] > 0.f ? Cww[1]: 0.f;
-            Cww[2] = adjoint[2] > 0.f ? Cww[2]: 0.f;
-            /*
-            if( !Cww.IsValid()){
-                SLog(EInfo, "throughput: %s \t adjoint: %s \t referenceEstimate: %s",throughput.toString().c_str(), adjoint.toString().c_str(),referenceEstimate.toString().c_str());
-                SLog(EInfo, "Cww: %s", Cww.toString().c_str());
-            }
-            */
-            DCHECK(Cww.IsValid());
-            // weight window lower bound
-            SampledSpectrum min = 2.0f*Cww/(1.0f+s);
-            // weight window upper bound
-            //Spectrum max = s*min;
-            Float fbeta = beta.Average();
-            Float fmin = min.Average();
-            fmin = fmin>0 ? fmin : fbeta;
-            survivalProb = fbeta / fmin;
-            /*
-            if( std::isnan(survivalProb) || !std::isfinite(survivalProb)){
-                SLog(EInfo, "throughput: %s \t adjoint: %s \t referenceEstimate: %s",throughput.toString().c_str(), adjoint.toString().c_str(),referenceEstimate.toString().c_str());
-                SLog(EInfo, "survivalProb: %f, Cww: %s \t min: %s",survivalProb, Cww.toString().c_str(),min.toString().c_str());
-            }
-            */
-        }
-        DCHECK(std::isfinite(survivalProb) && !std::isnan(survivalProb));
-        survivalProb = std::max(0.1f, survivalProb);
-        return std::min(survivalProb, 1.0f);
-    }
-
+    OPGLVector3f(const SampledSpectrum& s) {
+        x = s[0]; 
+        y = s[1];
+        z = s[2];
+    } 
+};
 
 struct ContributionEstimate {
     struct ContributionEstimateData {
@@ -487,11 +449,11 @@ struct GuidedBSDF{
     }
 
 #ifdef OPENPGL_EF_RADIANCE_CACHES
-    SampledSpectrum IncomingRadiance(const Vector3f wiRender) const {
+    SampledSpectrum IncomingRadiance(const Vector3f wiRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
             pgl_vec3f pglWo = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
-            pgl_vec3f pglIncomingRad = m_surfaceSamplingDistribution->IncomingRadiance(pglWo);
+            pgl_vec3f pglIncomingRad = m_surfaceSamplingDistribution->IncomingRadiance(pglWo, misWeighted);
             spec[0] = pglIncomingRad.x;
             spec[1] = pglIncomingRad.y;
             spec[2] = pglIncomingRad.z;
@@ -511,11 +473,11 @@ struct GuidedBSDF{
         return spec;
     }
 
-    SampledSpectrum Irradiance(const Vector3f nRender) const {
+    SampledSpectrum Irradiance(const Vector3f nRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
             pgl_vec3f pglN = openpgl::cpp::Vector3(nRender[0], nRender[1], nRender[2]);
-            pgl_vec3f pglIrradiance = m_surfaceSamplingDistribution->Irradiance(pglN);
+            pgl_vec3f pglIrradiance = m_surfaceSamplingDistribution->Irradiance(pglN, misWeighted);
             spec[0] = pglIrradiance.x;
             spec[1] = pglIrradiance.y;
             spec[2] = pglIrradiance.z;
@@ -741,11 +703,11 @@ struct GuidedPhaseFunction{
     }
 
 #ifdef OPENPGL_EF_RADIANCE_CACHES
-    SampledSpectrum IncomingRadiance(const Vector3f wiRender) const {
+    SampledSpectrum IncomingRadiance(const Vector3f wiRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
             pgl_vec3f pglWo = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
-            pgl_vec3f pglIncomingRad =  m_volumeSamplingDistribution->IncomingRadiance(pglWo);
+            pgl_vec3f pglIncomingRad =  m_volumeSamplingDistribution->IncomingRadiance(pglWo, misWeighted);
             spec[0] = pglIncomingRad.x;
             spec[1] = pglIncomingRad.y;
             spec[2] = pglIncomingRad.z;
@@ -765,11 +727,11 @@ struct GuidedPhaseFunction{
         return spec;
     }
 
-    SampledSpectrum InscatteredRadiance(const Vector3f woRender) const {
+    SampledSpectrum InscatteredRadiance(const Vector3f woRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
             pgl_vec3f pglWo = openpgl::cpp::Vector3(woRender[0], woRender[1], woRender[2]);
-            pgl_vec3f pglInscatteredRad =  m_volumeSamplingDistribution->InscatteredRadiance(pglWo, m_phase->MeanCosine());
+            pgl_vec3f pglInscatteredRad =  m_volumeSamplingDistribution->InscatteredRadiance(pglWo, m_phase->MeanCosine(), misWeighted);
             spec[0] = pglInscatteredRad.x;
             spec[1] = pglInscatteredRad.y;
             spec[2] = pglInscatteredRad.z;
@@ -777,10 +739,10 @@ struct GuidedPhaseFunction{
         return spec;
     }
 
-    SampledSpectrum Fluence() const {
+    SampledSpectrum Fluence(const bool misWeighted) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
-            pgl_vec3f pglFluence =  m_volumeSamplingDistribution->Fluence();
+            pgl_vec3f pglFluence =  m_volumeSamplingDistribution->Fluence(misWeighted);
             spec[0] = pglFluence.x;
             spec[1] = pglFluence.y;
             spec[2] = pglFluence.z;
