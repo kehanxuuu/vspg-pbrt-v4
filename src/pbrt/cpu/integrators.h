@@ -278,7 +278,7 @@ class GuidedPathIntegrator : public RayIntegrator {
 
     SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
-                       VisibleSurface *visibleSurface) const;
+                       VisibleSurface *visibleSurface) const override;
 
     void PostProcessWave() override;
 
@@ -289,7 +289,7 @@ class GuidedPathIntegrator : public RayIntegrator {
                                                   std::vector<Light> lights,
                                                   const FileLoc *loc);
 
-    std::string ToString() const;
+    std::string ToString() const override;
 
   private:
     // GuidedPathIntegrator Private Methods
@@ -425,7 +425,7 @@ class GuidedVolPathIntegrator : public RayIntegrator {
 
     SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
-                       VisibleSurface *visibleSurface) const;
+                       VisibleSurface *visibleSurface) const override;
 
     void PostProcessWave() override;
 
@@ -433,7 +433,7 @@ class GuidedVolPathIntegrator : public RayIntegrator {
         const ParameterDictionary &parameters, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
         Primitive aggregate, std::vector<Light> lights, const FileLoc *loc);
 
-    std::string ToString() const;
+    std::string ToString() const override;
 
   private:
     // GuidedVolPathIntegrator Private Methods
