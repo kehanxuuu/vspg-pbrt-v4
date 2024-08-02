@@ -76,6 +76,7 @@ Rendering options:
   --stats                       Print various statistics after rendering completes.
   --spp <n>                     Override number of pixel samples specified in scene
                                 description file.
+  --time <n>                    Render for (approximately) the specified amount of time (set spp is ignored).
   --wavefront                   Use wavefront volumetric path integrator.
   --write-partial-images        Periodically write the current image to disk, rather
                                 than waiting for the end of rendering. Default: disabled.
@@ -196,6 +197,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&iter, args.end(), "render-coord-sys", &renderCoordSys, onError) ||
             ParseArg(&iter, args.end(), "seed", &options.seed, onError) ||
             ParseArg(&iter, args.end(), "spp", &options.pixelSamples, onError) ||
+            ParseArg(&iter, args.end(), "time", &options.timeBudgetInSeconds, onError) ||
             ParseArg(&iter, args.end(), "stats", &options.printStatistics, onError) ||
             ParseArg(&iter, args.end(), "toply", &toPly, onError) ||
             ParseArg(&iter, args.end(), "wavefront", &options.wavefront, onError) ||

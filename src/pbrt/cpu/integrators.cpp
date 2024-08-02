@@ -108,11 +108,19 @@ void ImageTileIntegrator::Render() {
     ThreadLocal<Sampler> samplers([this]() { return samplerPrototype.Clone(); });
 
     Bounds2i pixelBounds = camera.GetFilm().PixelBounds();
+
+    bool timeBudget = Options->timeBudgetInSeconds && *Options->timeBudgetInSeconds > 0;
+    float remainingTime = 0;
+    if (timeBudget)
+        remainingTime = *Options->timeBudgetInSeconds;
+
     int spp = samplerPrototype.SamplesPerPixel();
-    ProgressReporter progress(int64_t(spp) * pixelBounds.Area(), "Rendering",
+    const int64_t totalBudgetForProgress = timeBudget ? remainingTime : int64_t(spp) * pixelBounds.Area();
+    ProgressReporter progress(totalBudgetForProgress, "Rendering",
                               Options->quiet);
 
     int waveStart = 0, waveEnd = 1, nextWaveSize = 1;
+    double waveStartTimeTotal, waveEndTimeTotal;
 
     if (Options->recordPixelStatistics)
         StatsEnablePixelStats(pixelBounds,
@@ -166,8 +174,9 @@ void ImageTileIntegrator::Render() {
     }
 
     // Render image in waves
-    while (waveStart < spp) {
-        Timer pureRenderingTimer;
+    bool renderingDone = false;
+    while (!renderingDone) {
+        waveStartTimeTotal = progress.ElapsedSeconds();
         // Render current wave's image tiles in parallel
         ParallelFor2D(pixelBounds, [&](Bounds2i tileBounds) {
             // Render image tile given by _tileBounds_
@@ -191,22 +200,44 @@ void ImageTileIntegrator::Render() {
             }
             PBRT_DBG("Finished image tile (%d,%d)-(%d,%d)\n", tileBounds.pMin.x,
                      tileBounds.pMin.y, tileBounds.pMax.x, tileBounds.pMax.y);
-            progress.Update((waveEnd - waveStart) * tileBounds.Area());
+            if (!timeBudget)
+                progress.Update((waveEnd - waveStart) * tileBounds.Area());
         });
         pureRenderingTime += pureRenderingTimer.ElapsedSeconds();
-        PostProcessWave();
+
+        // Check if already overtime, then do not update the path guiding data structure
+        waveEndTimeTotal = progress.ElapsedSeconds();
+        float waveTimeTotal = waveEndTimeTotal - waveStartTimeTotal;
+        if (!(timeBudget && remainingTime < waveTimeTotal)) {
+            PostProcessWave();
+        }
+
+        waveEndTimeTotal = progress.ElapsedSeconds();
+
+        // Update start and end wave
+        waveTimeTotal = waveEndTimeTotal - waveStartTimeTotal;
+        remainingTime -= waveTimeTotal;
+        if (timeBudget) {
+            progress.Update(waveTimeTotal);
+        }
+
+        renderingDone = (timeBudget ? remainingTime <= 0 : waveEnd >= spp);
+        if (renderingDone) {
+            progress.Done();
+            if (timeBudget)
+                std::cout << "Total spp: " << waveStart << std::endl;
+        }
 
         // Update start and end wave
         waveStart = waveEnd;
-        waveEnd = std::min(spp, waveEnd + nextWaveSize);
+        waveEnd = waveEnd + nextWaveSize;
         //if (!referenceImage)
         //    nextWaveSize = std::min(2 * nextWaveSize, 64);
         nextWaveSize = 1;
-        if (waveStart == spp)
-            progress.Done();
+
         //std::cout << "nextWaveSize: " << nextWaveSize << "\t spp: " << spp << "\t waveStart: " << waveStart << "\t waveEnd: " << waveEnd << std::endl;
         // Optionally write current image to disk
-        if (waveStart == spp || Options->writePartialImages || referenceImage) {
+        if (renderingDone || Options->writePartialImages || referenceImage) {
             LOG_VERBOSE("Writing image with spp = %d", waveStart);
             ImageMetadata metadata;
             metadata.renderTimeSeconds = progress.ElapsedSeconds();
@@ -221,7 +252,7 @@ void ImageTileIntegrator::Render() {
                 metadata.MSE = mse.Average();
                 fflush(mseOutFile);
             }
-            if (waveStart == spp || Options->writePartialImages) {
+            if (renderingDone || Options->writePartialImages) {
                 camera.InitMetadata(&metadata);
                 camera.GetFilm().WriteImage(metadata, 1.0f / waveStart);
             }
