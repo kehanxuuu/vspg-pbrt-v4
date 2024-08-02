@@ -672,7 +672,9 @@ class NanoVDBMedium {
     NanoVDBMedium(const Transform &renderFromMedium, Spectrum sigma_a, Spectrum sigma_s,
                   Float sigmaScale, Float g, nanovdb::GridHandle<NanoVDBBuffer> dg,
                   nanovdb::GridHandle<NanoVDBBuffer> tg, Float LeScale,
-                  Float temperatureOffset, Float temperatureScale, const RGBColorSpace* cs, Allocator alloc);
+                  Float temperatureOffset, Float temperatureScale,
+                  Float majorantScale, Float densityOffset,
+                  const RGBColorSpace* cs, Allocator alloc);
 #endif
     PBRT_CPU_GPU
     bool IsEmissive() const { return temperatureFloatGrid && LeScale > 0; }
@@ -693,6 +695,7 @@ class NanoVDBMedium {
             densityFloatGrid->worldToIndexF(nanovdb::Vec3<float>(p.x, p.y, p.z));
         using Sampler = nanovdb::SampleFromVoxels<nanovdb::FloatGrid::TreeType, 1, false>;
         Float d = Sampler(densityFloatGrid->tree())(pIndex);
+        d += densityOffset;
 
         return MediumProperties{sigma_a * d, sigma_s * d, &phase, Le(p, lambda)};
     }
@@ -746,6 +749,219 @@ class NanoVDBMedium {
     const nanovdb::FloatGrid *densityFloatGrid = nullptr;
     const nanovdb::FloatGrid *temperatureFloatGrid = nullptr;
     Float LeScale, temperatureOffset, temperatureScale;
+    Float majorantScale, densityOffset;
+};
+
+class EarthMedium {
+public:
+    using MajorantIterator = HomogeneousMajorantIterator;
+    using PhaseFunction = HGPhaseFunction;
+
+    // EarthMedium Public Methods
+    EarthMedium(const Bounds3f &bounds, const Transform &renderFromMedium,
+                Spectrum sigma_a_atmosphere, Spectrum sigma_s_atmosphere,
+                Float sigmaScale_atmosphere, Spectrum sigma_a_cloud, Spectrum sigma_s_cloud,
+                Float sigmaScale_cloud, Float g,
+                Float innerRadius_atmosphere, Float innerRadius_cloud,
+                Float outerRadius_atmosphere, Float outerRadius_cloud,
+                Point3f center, Float decay, Float majorantScale, Float densityOffset,
+                Float _rotationx, Float _rotationy, Float _rotationz,
+#if !defined(PBRT_RGB_RENDERING)
+                Image *heightmap, Allocator alloc)
+#else
+                Image *heightmap, const RGBColorSpace* cs, Allocator alloc)
+#endif
+            : bounds(bounds),
+              renderFromMedium(renderFromMedium),
+#if !defined(PBRT_RGB_RENDERING)
+                sigma_a_spec_atmosphere(sigma_a_atmosphere, alloc),
+                sigma_s_spec_atmosphere(sigma_s_atmosphere, alloc),
+                sigma_a_spec_cloud(sigma_a_cloud, alloc),
+                sigma_s_spec_cloud(sigma_s_cloud, alloc),
+#else
+                sigma_a_spec_atmosphere(*cs, sigma_a_atmosphere.ToRGBUnbounded(*cs).GetRGB()),
+                sigma_s_spec_atmosphere(*cs, sigma_s_atmosphere.ToRGBUnbounded(*cs).GetRGB()),
+                sigma_a_spec_cloud(*cs, sigma_a_cloud.ToRGBUnbounded(*cs).GetRGB()),
+                sigma_s_spec_cloud(*cs, sigma_s_cloud.ToRGBUnbounded(*cs).GetRGB()),
+#endif
+              phase(g),
+              center(center),
+              innerRadius_atmosphere(innerRadius_atmosphere),
+              innerRadius_cloud(innerRadius_cloud),
+              outerRadius_atmosphere(outerRadius_atmosphere),
+              outerRadius_cloud(outerRadius_cloud),
+              h(decay),
+              majorantScale(majorantScale),
+              densityOffset(densityOffset),
+              heightMap(heightmap) {
+        sigma_a_spec_atmosphere.Scale(sigmaScale_atmosphere);
+        sigma_s_spec_atmosphere.Scale(sigmaScale_atmosphere);
+        sigma_a_spec_cloud.Scale(sigmaScale_cloud);
+        sigma_s_spec_cloud.Scale(sigmaScale_cloud);
+        rotationx = Radians(_rotationx);
+        rotationy = Radians(_rotationy);
+        rotationz = Radians(_rotationz);
+    }
+
+    static EarthMedium *Create(const ParameterDictionary &parameters,
+                                              const Transform &renderFromMedium, const FileLoc *loc,
+                                              Allocator alloc);
+
+    std::string ToString() const {
+        return StringPrintf("[ EarthMedium bounds: %s renderFromMedium: %s "
+                            "phase: %s sigma_a_atmosphere: %s sigma_s_atmosphere: %s "
+                            "sigma_a_cloud: %s sigma_s_cloud: %s "
+                            "innerRadius_atmosphere: %f innerRadius_cloud: %f "
+                            "outerRadius_atmosphere: %f outerRadius_cloud: %f "
+                            "decay: %f center: %s ]",
+                            bounds, renderFromMedium,
+                            phase, sigma_a_spec_atmosphere, sigma_s_spec_atmosphere,
+                            sigma_a_spec_cloud, sigma_s_spec_cloud,
+                            innerRadius_atmosphere, innerRadius_cloud,
+                            outerRadius_atmosphere, outerRadius_cloud, h, center);
+    }
+
+    PBRT_CPU_GPU
+    bool IsEmissive() const { return false; }
+
+    PBRT_CPU_GPU
+    bool IsHomogeneous() const { return false; }
+
+    PBRT_CPU_GPU
+    MediumProperties SamplePoint(Point3f p, const SampledWavelengths &lambda) const {
+        // Compute sampled spectra for cloud $\sigmaa$ and $\sigmas$ at _p_
+        Float exponentialDensity = ExponentialDensity(renderFromMedium.ApplyInverse(p));
+        Float cloudDensity = IsInsideCloud(renderFromMedium.ApplyInverse(p)) ? 1 : 0;
+        SampledSpectrum sigma_a = exponentialDensity * sigma_a_spec_atmosphere.Sample(lambda) + cloudDensity * sigma_a_spec_cloud.Sample(lambda);
+        SampledSpectrum sigma_s = exponentialDensity * sigma_s_spec_atmosphere.Sample(lambda) + cloudDensity * sigma_s_spec_cloud.Sample(lambda);
+
+        return MediumProperties{sigma_a, sigma_s, &phase, SampledSpectrum(0.f)};
+    }
+
+    PBRT_CPU_GPU
+    HomogeneousMajorantIterator SampleRay(Ray ray, Float raytMax,
+                                          const SampledWavelengths &lambda) const {
+        // Transform ray to medium's space and compute bounds overlap
+        ray = renderFromMedium.ApplyInverse(ray, &raytMax);
+        Float tMin, tMax;
+        if (!bounds.IntersectP(ray.o, ray.d, raytMax, &tMin, &tMax))
+            return {};
+        DCHECK_LE(tMax, raytMax);
+
+        // Compute $\sigmat$ bound for cloud medium and initialize majorant iterator
+        SampledSpectrum sigma_a_atmosphere = sigma_a_spec_atmosphere.Sample(lambda);
+        SampledSpectrum sigma_s_atmosphere = sigma_s_spec_atmosphere.Sample(lambda);
+        SampledSpectrum sigma_a_cloud = sigma_a_spec_cloud.Sample(lambda);
+        SampledSpectrum sigma_s_cloud = sigma_s_spec_cloud.Sample(lambda);
+        SampledSpectrum sigma_t = (sigma_a_atmosphere + sigma_s_atmosphere) * (1 + densityOffset)
+                                  + sigma_a_cloud + sigma_s_cloud;
+        return HomogeneousMajorantIterator(tMin, tMax, sigma_t * majorantScale);
+    }
+
+private:
+    // EarthMedium Private Methods
+    PBRT_CPU_GPU
+    Float ExponentialDensity(Point3f p) const {
+        Float distance = Distance(p, center) - innerRadius_atmosphere;
+        distance = std::min(std::max(distance, 0.f), outerRadius_atmosphere);
+        return FastExp(-distance / h) + densityOffset;
+    }
+
+    PBRT_CPU_GPU
+    Point2f GetUVs(const Vector3f& p) const {
+        Vector3f d = Normalize(p);
+        // Order of rotation: Y->X->Z (when getting uv, take the reverse)
+        d = RotateAroundZ(d);
+        d = RotateAroundX(d);
+        d = RotateAroundY(d);
+        Point2f uv = EqualAreaSphereToSquare(d);
+        uv[0] *= InvPi;
+        uv[0] = uv[0] - std::floor(uv[0]);
+        uv[1] *= Inv2Pi;
+        uv[1] = uv[1] - std::floor(uv[1]);
+
+        std::swap(uv[0], uv[1]);
+        return uv;
+    }
+
+    PBRT_CPU_GPU
+    Vector3f RotateAroundX(Vector3f dir) const {
+        Point2f result(
+                std::acos(dir.x),
+                std::atan2(dir.z, dir.y)
+        );
+        float theta = result.x;
+        float phi = result.y;
+        phi += rotationx;
+
+        return Vector3f(
+                std::cos(theta),
+                std::sin(theta) * std::cos(phi),
+                std::sin(theta) * std::sin(phi));
+    }
+
+    PBRT_CPU_GPU
+    Vector3f RotateAroundY(Vector3f dir) const {
+        Point2f result(
+                std::acos(dir.y),
+                std::atan2(dir.z, dir.x)
+        );
+        float theta = result.x;
+        float phi = result.y;
+        phi += rotationy;
+
+        return Vector3f(
+                std::sin(theta) * std::cos(phi),
+                std::cos(theta),
+                std::sin(theta) * std::sin(phi));
+    }
+
+    PBRT_CPU_GPU
+    Vector3f RotateAroundZ(Vector3f dir) const {
+        Point2f result(
+                std::acos(dir.z),
+                std::atan2(dir.y, dir.x)
+        );
+        float theta = result.x;
+        float phi = result.y;
+        phi += rotationz;
+
+        return Vector3f(
+                std::sin(theta) * std::cos(phi),
+                std::sin(theta) * std::sin(phi),
+                std::cos(theta));
+    }
+
+    PBRT_CPU_GPU
+    float GetHeight(const Vector3f& p) const {
+        Point2f uv = GetUVs(p);
+        return innerRadius_cloud + (outerRadius_cloud - innerRadius_cloud) * heightMap->BilerpChannel(uv, 0, WrapMode::Repeat);
+    }
+
+    PBRT_CPU_GPU
+    bool IsInsideCloud(const Point3f& p) const {
+        const Vector3f pShifted = p - center;
+        const float height = GetHeight(pShifted);
+        return Length(pShifted) <= height;
+    }
+
+    // EarthMedium Private Members
+    Bounds3f bounds;
+    Transform renderFromMedium;
+#if !defined(PBRT_RGB_RENDERING)
+    DenselySampledSpectrum sigma_a_spec_atmosphere, sigma_s_spec_atmosphere;
+    DenselySampledSpectrum sigma_a_spec_cloud, sigma_s_spec_cloud;
+#else
+    RGBUnboundedSpectrum sigma_a_spec_atmosphere, sigma_s_spec_atmosphere;
+    RGBUnboundedSpectrum sigma_a_spec_cloud, sigma_s_spec_cloud;
+#endif
+    HGPhaseFunction phase;
+    Point3f center;
+    Float innerRadius_atmosphere, innerRadius_cloud, outerRadius_atmosphere, outerRadius_cloud;
+    Float h; // Control how fast the atmosphere decays
+    Float majorantScale, densityOffset;
+    Float rotationx, rotationy, rotationz;
+    Image *heightMap;
 };
 
 PBRT_CPU_GPU inline Float PhaseFunction::p(Vector3f wo, Vector3f wi) const {
