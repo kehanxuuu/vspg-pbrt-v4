@@ -538,6 +538,13 @@ struct TrBuffer {
         int numPixels = resolution[0]*resolution[1];
         spp = new int[numPixels];
         transmittanceBuffer = new RGB[numPixels];
+
+        pbrt::ParallelFor(
+            0, numPixels,
+            PBRT_CPU_GPU_LAMBDA(int i) {
+                spp[i] = 0.f;
+                transmittanceBuffer[i] = {0.f,0.f,0.f};
+            });
     }
 
     TrBuffer(const std::string& fileName) {
