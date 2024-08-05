@@ -885,7 +885,9 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     SampledSpectrum albedo = mp.sigma_s / sigma_t;
                     Float pScatter = sigma_t[channelIdx] / sigma_maj[channelIdx];
 
+                    bool VilleminCollisionProbabilityBias = false;
                     if (depth == 0 && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias && trBufferLoad) {
+                        VilleminCollisionProbabilityBias = true;
                         Float trEstCache = trBuffer->GetTransmittance(pPixel)[channelIdx];
                         Float gamma = 1 + trEstCache;
                         pScatter = pow(pScatter, 1 / gamma);
@@ -928,6 +930,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                         Float pdf = T_maj[channelIdx] * sigma_t[channelIdx];
                         beta *= T_maj * mp.sigma_s / pdf;
                         r_u *= T_maj * sigma_t / pdf;
+                        if (VilleminCollisionProbabilityBias)
+                            r_u *= sigma_maj * pScatter / sigma_t;
 #endif
                         transmittanceWeight *= (T_maj * mp.sigma_s) / pdf;
 
@@ -1019,6 +1023,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                             transmittanceWeight = SampledSpectrum(0.f);
                         }
                         r_u *= T_maj * sigma_n / pdf;
+                        if (VilleminCollisionProbabilityBias)
+                            r_u *= sigma_maj * (1 - pScatter) / sigma_n;
                         r_l *= T_maj * sigma_maj / pdf;
                         return beta && r_u;
                     }
