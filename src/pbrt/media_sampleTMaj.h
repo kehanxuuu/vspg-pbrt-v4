@@ -285,6 +285,11 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
         if (!seg)
             break;
 
+        if (std::isinf(seg->tMax)) {
+            std::cout << "SampleT_maj_OpticalDepthSpace: seg->tMax is inf! " << ray.o << " " << ray.d << " " << std::endl; // Shouldn't reach here
+            return SampleT_maj(ray, tMax, u, rng, lambda, callback);
+        }
+
         if (seg->sigma_maj[channelIdx] == 0)
             continue;
 

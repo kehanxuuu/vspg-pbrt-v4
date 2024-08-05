@@ -276,12 +276,13 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
                                       depth, L, beta)
                 .c_str())
         pstd::optional<ShapeIntersection> si = Intersect(ray);
+        Float tMax = si ? si->tHit : Infinity;
 
         SampledSpectrum transmittanceWeight = SampledSpectrum(1.0f);
-        if (ray.medium) {
+        if (ray.medium && !std::isinf(tMax)) {
             // Sample the participating medium
             bool scattered = false, terminated = false;
-            Float tMax = si ? si->tHit : Infinity;
+
             // Initialize _RNG_ for sampling the majorant transmittance
             uint64_t hash0 = Hash(sampler.Get1D());
             uint64_t hash1 = Hash(sampler.Get1D());
@@ -1055,8 +1056,7 @@ inline Float GuidedVolPathVSPGIntegrator::GetPrimaryRayVolumeScatterProbability(
 
 inline Float GuidedVolPathVSPGIntegrator::GetSecondaryRayVolumeScatterProbability(
         GuidedPhaseFunction &gphase, Vector3f wi, bool &scatterSecondary) const {
-    Float vsp = -1.f;
-    vsp = gphase.VolumeScatterProbability(wi, guideSettings.vspCriterion == 0);
+    Float vsp = gphase.VolumeScatterProbability(wi, guideSettings.vspCriterion == 0);
 
     if (std::isnan(vsp) || vsp < 0.f || vsp > 1.f)
         scatterSecondary = false;
@@ -1067,8 +1067,7 @@ inline Float GuidedVolPathVSPGIntegrator::GetSecondaryRayVolumeScatterProbabilit
 
 inline Float GuidedVolPathVSPGIntegrator::GetSecondaryRayVolumeScatterProbability(
         GuidedBSDF &gbsdf, Vector3f wi, bool &scatterSecondary) const {
-    Float vsp = -1.f;
-    vsp = gbsdf.VolumeScatterProbability(wi, guideSettings.vspCriterion == 0);
+    Float vsp = gbsdf.VolumeScatterProbability(wi, guideSettings.vspCriterion == 0);
 
     if (std::isnan(vsp) || vsp < 0.f || vsp > 1.f)
         scatterSecondary = false;
