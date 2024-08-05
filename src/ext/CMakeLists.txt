@@ -163,64 +163,10 @@ include(ExternalProject)
 endif()
 
 ###########################################################################
-# Open PGL
-if (PBRT_WITH_PATH_GUIDING)
-
-  find_package (openpgl)
-
-  if (OPENPGL_FOUND)
-    message (STATUS "Found OpenPGL version ${OPENPGL_VERSION}")
-  else ()
-    message (STATUS "OpenPGL not found; building it from scratch.")
-
-    set(OPENPGL_ARGS ${OPENPGL_ARGS}
-      -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_INSTALL_PREFIX}
-      -DCMAKE_PREFIX_PATH:PATH=${CMAKE_PREFIX_PATH}
-      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-      -DOPENPGL_BUILD_STATIC=ON
-      -DOPENPGL_TBB_ROOT=${CMAKE_INSTALL_PREFIX}
-      -DOPENPGL_EF_RADIANCE_CACHES=ON
-      -DOPENPGL_DIRECTION_COMPRESSION=ON
-      -DOPENPGL_RADIANCE_COMPRESSION=ON
-    )
-
-    ExternalProject_Add(OpenPGL
-      PREFIX openpgl
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/openpgl
-      CMAKE_ARGS
-        ${OPENPGL_ARGS}
-      BUILD_ALWAYS OFF
-    )
-
-    ExternalProject_Add_StepDependencies(OpenPGL
-    configure
-      TBB
-    )
-
-    #set(BUILD_STATIC ON CACHE BOOL "" FORCE)
-    #add_subdirectory (openpgl/superbuild)
-    #set_property (TARGET ep_openpgl PROPERTY FOLDER "ext/openpgl")
-    
-    set (OPENPGL_INCLUDE_DIR
-      ${CMAKE_INSTALL_PREFIX}/include
-      PARENT_SCOPE
-    )
-
-    set (OPENPGL_LIBRARIES
-      openpgl
-      tbb
-      PARENT_SCOPE
-    )
-  endif()
-
-endif()
-
-
-###########################################################################
 # Open Image Denoise
 if (PBRT_WITH_OIDN)
 include(ExternalProject)
-  find_package (oidn)
+  find_package (OpenImageDenoise 2.2.0)
 
   if (OIDN_FOUND)
     message (STATUS "Found Open Image Denoise version ${OIDN_VERSION}")
@@ -302,3 +248,56 @@ include(ExternalProject)
 
 endif()
 
+###########################################################################
+# Open PGL
+if (PBRT_WITH_PATH_GUIDING)
+
+  find_package (openpgl)
+
+  if (OPENPGL_FOUND)
+    message (STATUS "Found OpenPGL version ${OPENPGL_VERSION}")
+  else ()
+    message (STATUS "OpenPGL not found; building it from scratch.")
+
+    set(OPENPGL_ARGS ${OPENPGL_ARGS}
+      -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_INSTALL_PREFIX}
+      -DCMAKE_PREFIX_PATH:PATH=${CMAKE_PREFIX_PATH}
+      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+      -DOPENPGL_BUILD_STATIC=OFF
+      -DOPENPGL_TBB_ROOT=${CMAKE_INSTALL_PREFIX}
+      -DOPENPGL_EF_RADIANCE_CACHES=ON
+      -DOPENPGL_DIRECTION_COMPRESSION=ON
+      -DOPENPGL_RADIANCE_COMPRESSION=ON
+    )
+
+    ExternalProject_Add(OpenPGL
+      PREFIX openpgl
+      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/openpgl
+      CMAKE_ARGS
+        ${OPENPGL_ARGS}
+      BUILD_ALWAYS ON
+    )
+
+    ExternalProject_Add_StepDependencies(OpenPGL
+    configure
+      TBB
+      OIDN
+    )
+
+    #set(BUILD_STATIC ON CACHE BOOL "" FORCE)
+    #add_subdirectory (openpgl/superbuild)
+    #set_property (TARGET ep_openpgl PROPERTY FOLDER "ext/openpgl")
+    
+    set (OPENPGL_INCLUDE_DIR
+      ${CMAKE_INSTALL_PREFIX}/include
+      PARENT_SCOPE
+    )
+
+    set (OPENPGL_LIBRARIES
+      openpgl
+      tbb
+      PARENT_SCOPE
+    )
+  endif()
+
+endif()
