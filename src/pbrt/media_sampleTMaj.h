@@ -179,6 +179,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u
     // Generate ray majorant samples until termination
     SampledSpectrum T_maj(1.f);
     bool done = false;
+    int count = 0;
     while (!done) {
         // Get next majorant segment from iterator and sample it
         pstd::optional<RayMajorantSegment> seg = iter.Next();
@@ -201,12 +202,17 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u
         // Generate samples along current majorant segment
         Float tMin = seg->tMin;
         while (true) {
+            count ++;
             // Try to generate sample along current majorant segment
             Float t = tMin + SampleExponential(u, seg->sigma_maj[channelIdx]);
             PBRT_DBG("Sampled t = %f from tMin %f u %f sigma_maj[%d] %f\n", t, tMin, u,
                      channelIdx, seg->sigma_maj[channelIdx]);
             u = rng.Uniform<Float>();
             if (t < seg->tMax) {
+                if (count > 10000) {
+                    std::cout << "Warning: count = " << count << " is too large, must be buggy somewhere!!" << std::endl;
+                    break;
+                }
                 // Call callback function for sample within segment
                 PBRT_DBG("t < seg->tMax\n");
                 T_maj *= FastExp(-(t - tMin) * seg->sigma_maj);
