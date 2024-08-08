@@ -10,6 +10,8 @@
 
 #define USE_PVOL_EST
 //#define USE_PVOL_CORRECTION
+//#define DENOISE_AFTER_PRODUCT
+#define INCLUDE_RENDERING
 
 namespace pbrt {
 
@@ -32,8 +34,15 @@ struct VSPBuffer {
             normal = new Normal3f[numPixels];
             spp = new Float[numPixels];
 
+#ifndef DENOISE_AFTER_PRODUCT
             filteredContribution = new RGB[numPixels];
             filteredSecondMoment = new RGB[numPixels];
+#else
+            scaledContribution = new RGB[numPixels];
+            scaledSecondMoment = new RGB[numPixels];
+            filteredScaledContribution = new RGB[numPixels];
+            filteredScaledSecondMoment = new RGB[numPixels];
+#endif
 
             pbrt::ParallelFor(
                 0, numPixels,
@@ -45,8 +54,15 @@ struct VSPBuffer {
                     normal[i] = {0.f,0.f,0.f};
                     spp[i] = 0.f;
 
+#ifndef DENOISE_AFTER_PRODUCT
                     filteredContribution[i] = {0.f,0.f,0.f};
                     filteredSecondMoment[i] = {0.f,0.f,0.f};
+#else
+                    scaledContribution[i] = {0.f,0.f,0.f};
+                    scaledSecondMoment[i] = {0.f,0.f,0.f};
+                    filteredScaledContribution[i] = {0.f,0.f,0.f};
+                    filteredScaledSecondMoment[i] = {0.f,0.f,0.f};
+#endif
                 });
         } 
         
@@ -57,9 +73,15 @@ struct VSPBuffer {
             delete[] albedo;
             delete[] normal;
             delete[] spp;
-
+#ifndef DENOISE_AFTER_PRODUCT
             delete[] filteredContribution;
             delete[] filteredSecondMoment;
+#else
+            delete[] scaledContribution;
+            delete[] scaledSecondMoment;
+            delete[] filteredScaledContribution;
+            delete[] filteredScaledSecondMoment;
+#endif
         }
 
         int numPixels {0};
@@ -78,10 +100,17 @@ struct VSPBuffer {
         Float* spp {nullptr};
 
         ////// filtered buffers
+#ifndef DENOISE_AFTER_PRODUCT
         // filtered buffer for the contribution
         RGB* filteredContribution {nullptr};
         // filtered buffer for the sqrt of the second moment
         RGB* filteredSecondMoment {nullptr};
+#else
+        RGB* scaledContribution {nullptr};
+        RGB* scaledSecondMoment {nullptr};
+        RGB* filteredScaledContribution {nullptr};
+        RGB* filteredScaledSecondMoment {nullptr};
+#endif
 
     };
 
@@ -136,11 +165,22 @@ struct VSPBuffer {
             const Float volumeSampleCount = volumeBuffers->spp[pIdx];
             const Float pVolEst = volumeSampleCount / (surfaceSampleCount + volumeSampleCount);
 		    pVolBuffer[pIdx] = pVolEst;
+#ifdef DENOISE_AFTER_PRODUCT
+            surfaceBuffers->scaledContribution[pIdx] = surfaceBuffers->contribution[pIdx] * (1 - pVolEst);
+            volumeBuffers->scaledContribution[pIdx] = volumeBuffers->contribution[pIdx] * pVolEst;
+            surfaceBuffers->scaledSecondMoment[pIdx] = surfaceBuffers->secondMoment[pIdx] * (1 - pVolEst) * (1 - pVolEst);
+            volumeBuffers->scaledSecondMoment[pIdx] = volumeBuffers->secondMoment[pIdx] * pVolEst * pVolEst;
+#endif
         });
 
         denoiser->Denoise(pVolBuffer, filteredPVolBuffer);
+#ifndef DENOISE_AFTER_PRODUCT
         denoiser->Denoise(surfaceBuffers->contribution, surfaceBuffers->secondMoment, surfaceBuffers->normal, surfaceBuffers->albedo, surfaceBuffers->filteredContribution, surfaceBuffers->filteredSecondMoment);
         denoiser->Denoise(volumeBuffers->contribution, volumeBuffers->secondMoment, volumeBuffers->normal, volumeBuffers->albedo, volumeBuffers->filteredContribution, volumeBuffers->filteredSecondMoment);
+#else
+        denoiser->Denoise(surfaceBuffers->scaledContribution, surfaceBuffers->scaledSecondMoment, surfaceBuffers->normal, surfaceBuffers->albedo, surfaceBuffers->filteredScaledContribution, surfaceBuffers->filteredScaledSecondMoment);
+        denoiser->Denoise(volumeBuffers->scaledContribution, volumeBuffers->scaledSecondMoment, volumeBuffers->normal, volumeBuffers->albedo, volumeBuffers->filteredScaledContribution, volumeBuffers->filteredScaledSecondMoment);
+#endif
         ParallelFor2D(pixelBounds, [&](Point2i p) {
             int pIdx = p.y * resolution.x + p.x;
 		    Float pVolEst = filteredPVolBuffer[pIdx];
@@ -157,20 +197,33 @@ struct VSPBuffer {
             // If the surface/volume buffers only include volume or surface samples we have
             // to correct with (1.f -pVolEst) and pVolEst.
             // Not since we already use the sqrt of the second moment we only need to multiply
-            // with pVolEst and not pVolEst°2 
-            RGB surfaceContribution = (1.f - pVolEst) * surfaceBuffers->filteredContribution[pIdx];
+            // with pVolEst and not pVolEst°2
 
+#ifndef DENOISE_AFTER_PRODUCT
+            RGB surfaceContribution = (1.f - pVolEst) * surfaceBuffers->filteredContribution[pIdx];
             RGB surfaceSecondMomentSqrtPsurf;
             surfaceSecondMomentSqrtPsurf[0] = surfaceBuffers->filteredSecondMoment[pIdx][0] > 0.f ? (1.f - pVolEst) * std::sqrt(surfaceBuffers->filteredSecondMoment[pIdx][0]) : 0.f;
             surfaceSecondMomentSqrtPsurf[1] = surfaceBuffers->filteredSecondMoment[pIdx][1] > 0.f ? (1.f - pVolEst) * std::sqrt(surfaceBuffers->filteredSecondMoment[pIdx][1]) : 0.f;
             surfaceSecondMomentSqrtPsurf[2] = surfaceBuffers->filteredSecondMoment[pIdx][2] > 0.f ? (1.f - pVolEst) * std::sqrt(surfaceBuffers->filteredSecondMoment[pIdx][2]) : 0.f;
 
             RGB volumeContribution = pVolEst * volumeBuffers->filteredContribution[pIdx];
-
             RGB volumeSecondMomentSqrtPvol;
             volumeSecondMomentSqrtPvol[0] = volumeBuffers->filteredSecondMoment[pIdx][0] > 0.f ? pVolEst * std::sqrt(volumeBuffers->filteredSecondMoment[pIdx][0]) : 0.f;
             volumeSecondMomentSqrtPvol[1] = volumeBuffers->filteredSecondMoment[pIdx][1] > 0.f ? pVolEst * std::sqrt(volumeBuffers->filteredSecondMoment[pIdx][1]) : 0.f;
             volumeSecondMomentSqrtPvol[2] = volumeBuffers->filteredSecondMoment[pIdx][2] > 0.f ? pVolEst * std::sqrt(volumeBuffers->filteredSecondMoment[pIdx][2]) : 0.f;
+#else
+            RGB surfaceContribution = surfaceBuffers->filteredScaledContribution[pIdx];
+            RGB surfaceSecondMomentSqrtPsurf;
+            surfaceSecondMomentSqrtPsurf[0] = std::sqrt(surfaceBuffers->filteredScaledSecondMoment[pIdx][0]);
+            surfaceSecondMomentSqrtPsurf[1] = std::sqrt(surfaceBuffers->filteredScaledSecondMoment[pIdx][1]);
+            surfaceSecondMomentSqrtPsurf[2] = std::sqrt(surfaceBuffers->filteredScaledSecondMoment[pIdx][2]);
+
+            RGB volumeContribution = volumeBuffers->filteredScaledContribution[pIdx];
+            RGB volumeSecondMomentSqrtPvol;
+            volumeSecondMomentSqrtPvol[0] = std::sqrt(volumeBuffers->filteredScaledSecondMoment[pIdx][0]);
+            volumeSecondMomentSqrtPvol[1] = std::sqrt(volumeBuffers->filteredScaledSecondMoment[pIdx][1]);
+            volumeSecondMomentSqrtPvol[2] = std::sqrt(volumeBuffers->filteredScaledSecondMoment[pIdx][2]);
+#endif
 
 #endif
             RGB contribution = surfaceContribution + volumeContribution;
@@ -238,14 +291,19 @@ struct VSPBuffer {
      * Returns the VSP for a given pixel index.
      */
     Float GetVSP(const Point2i &pPixel, const bool contributionBased = true) const {
+        if (!isReady) // The first spp
+            return 0.5f; // Distribute surface and volume samples evenly to make sure at least one sample for each (make it easy for denoising)
         const int pixIdx = pPixel.y * resolution.x + pPixel.x;
+//        int spp = volumeBuffers->spp[pixIdx] + surfaceBuffers->spp[pixIdx];
+//        if (spp <= 0) // Distribute surface and volume samples evenly for the first few SPPs
+//            return 0.5;
         const Float vsp = contributionBased ? vspContributionBuffer[pixIdx] : vspSecondMomentBuffer[pixIdx];
-        //std::cout << "GetVSP("<< secondMoment <<"): " << "pixIdx = " << pixIdx << "    vsp = " << vsp << std::endl;
         return vsp;
     }
 
     bool Ready() const {
-        return isReady;
+        return true;
+        // return isReady;
     }
 
     void Store(const std::string& fileName) const {
@@ -256,6 +314,11 @@ struct VSPBuffer {
         Bounds2i pixelBounds = Bounds2i(pMin, pMax);
         Image image(format, Point2i(resolution),
                 {
+#ifdef INCLUDE_RENDERING
+                 "R",
+                 "G",
+                 "B",
+#endif
                  "SurfContrib.R",
                  "SurfContrib.G",
                  "SurfContrib.B",
@@ -301,6 +364,9 @@ struct VSPBuffer {
                  "pVolTargetContrib",
                  "pVolTargetSecMom",});
 
+#ifdef INCLUDE_RENDERING
+        ImageChannelDesc rgbDesc = image.GetChannelDesc({"R", "G", "B"});
+#endif
         ImageChannelDesc surfContributionDesc = image.GetChannelDesc({"SurfContrib.R", "SurfContrib.G", "SurfContrib.B"});
         ImageChannelDesc surfContributionDenoisedDesc = image.GetChannelDesc({"SurfContribDenoised.R", "SurfContribDenoised.G", "SurfContribDenoised.B"});
 
@@ -333,6 +399,11 @@ struct VSPBuffer {
             Float pVolEst = filteredPVolBuffer[pIdx];
             Float pSurfEst = 1.f - pVolEst;
 
+#ifdef INCLUDE_RENDERING
+            RGB rgb = surfaceBuffers->contribution[pIdx] * (1 - pVol) + volumeBuffers->contribution[pIdx] * pVol;
+#endif
+
+#ifndef DENOISE_AFTER_PRODUCT
             RGB surfContributionPsurf = pSurfEst * surfaceBuffers->contribution[pIdx];
             RGB surfContributionPsurfDenoised = pSurfEst * surfaceBuffers->filteredContribution[pIdx];
 
@@ -340,14 +411,11 @@ struct VSPBuffer {
             surfSecondMomentSqrtPsurf[0] = surfaceBuffers->filteredSecondMoment[pIdx][0] > 0.f ? pSurfEst * std::sqrt(surfaceBuffers->secondMoment[pIdx][0]) : 0.f;
             surfSecondMomentSqrtPsurf[1] = surfaceBuffers->filteredSecondMoment[pIdx][1] > 0.f ? pSurfEst * std::sqrt(surfaceBuffers->secondMoment[pIdx][1]) : 0.f;
             surfSecondMomentSqrtPsurf[2] = surfaceBuffers->filteredSecondMoment[pIdx][2] > 0.f ? pSurfEst * std::sqrt(surfaceBuffers->secondMoment[pIdx][2]) : 0.f;
+
             RGB surfSecondMomentSqrtPsurfDenoised;
             surfSecondMomentSqrtPsurfDenoised[0] = surfaceBuffers->filteredSecondMoment[pIdx][0] > 0.f ? pSurfEst * std::sqrt(surfaceBuffers->filteredSecondMoment[pIdx][0]) : 0.f;
             surfSecondMomentSqrtPsurfDenoised[1] = surfaceBuffers->filteredSecondMoment[pIdx][1] > 0.f ? pSurfEst * std::sqrt(surfaceBuffers->filteredSecondMoment[pIdx][1]) : 0.f;
             surfSecondMomentSqrtPsurfDenoised[2] = surfaceBuffers->filteredSecondMoment[pIdx][2] > 0.f ? pSurfEst * std::sqrt(surfaceBuffers->filteredSecondMoment[pIdx][2]) : 0.f;
-
-            RGB surfNormal = (RGB(surfaceBuffers->normal[pIdx].x, surfaceBuffers->normal[pIdx].y, surfaceBuffers->normal[pIdx].z) + RGB(1.f, 1.f, 1.f)) * 0.5f;
-            RGB surfAlbedo = surfaceBuffers->albedo[pIdx];
-            Float surfSPP = surfaceBuffers->spp[pIdx];
 
             RGB volContributionPvol = pVolEst * volumeBuffers->contribution[pIdx];
             RGB volContributionPvolDenoised = pVolEst * volumeBuffers->filteredContribution[pIdx];
@@ -356,10 +424,42 @@ struct VSPBuffer {
             volSecondMomentSqrtPvol[0] = volumeBuffers->filteredSecondMoment[pIdx][0] > 0.f ? pVolEst * std::sqrt(volumeBuffers->secondMoment[pIdx][0]) : 0.f;
             volSecondMomentSqrtPvol[1] = volumeBuffers->filteredSecondMoment[pIdx][1] > 0.f ? pVolEst * std::sqrt(volumeBuffers->secondMoment[pIdx][1]) : 0.f;
             volSecondMomentSqrtPvol[2] = volumeBuffers->filteredSecondMoment[pIdx][2] > 0.f ? pVolEst * std::sqrt(volumeBuffers->secondMoment[pIdx][2]) : 0.f;
+
             RGB volSecondMomentSqrtPvolDenoised;
             volSecondMomentSqrtPvolDenoised[0] = volumeBuffers->filteredSecondMoment[pIdx][0] > 0.f ? pVolEst * std::sqrt(volumeBuffers->filteredSecondMoment[pIdx][0]) : 0.f;
             volSecondMomentSqrtPvolDenoised[1] = volumeBuffers->filteredSecondMoment[pIdx][1] > 0.f ? pVolEst * std::sqrt(volumeBuffers->filteredSecondMoment[pIdx][1]) : 0.f;
             volSecondMomentSqrtPvolDenoised[2] = volumeBuffers->filteredSecondMoment[pIdx][2] > 0.f ? pVolEst * std::sqrt(volumeBuffers->filteredSecondMoment[pIdx][2]) : 0.f;
+#else
+            RGB surfContributionPsurf = surfaceBuffers->scaledContribution[pIdx];
+            RGB surfContributionPsurfDenoised = surfaceBuffers->filteredScaledContribution[pIdx];
+
+            RGB surfSecondMomentSqrtPsurf;
+            surfSecondMomentSqrtPsurf[0] = std::sqrt(surfaceBuffers->scaledSecondMoment[pIdx][0]);
+            surfSecondMomentSqrtPsurf[1] = std::sqrt(surfaceBuffers->scaledSecondMoment[pIdx][1]);
+            surfSecondMomentSqrtPsurf[2] = std::sqrt(surfaceBuffers->scaledSecondMoment[pIdx][2]);
+
+            RGB surfSecondMomentSqrtPsurfDenoised;
+            surfSecondMomentSqrtPsurfDenoised[0] = std::sqrt(surfaceBuffers->filteredScaledSecondMoment[pIdx][0]);
+            surfSecondMomentSqrtPsurfDenoised[1] = std::sqrt(surfaceBuffers->filteredScaledSecondMoment[pIdx][1]);
+            surfSecondMomentSqrtPsurfDenoised[2] = std::sqrt(surfaceBuffers->filteredScaledSecondMoment[pIdx][2]);
+
+            RGB volContributionPvol = volumeBuffers->scaledContribution[pIdx];
+            RGB volContributionPvolDenoised = volumeBuffers->filteredScaledContribution[pIdx];
+
+            RGB volSecondMomentSqrtPvol;
+            volSecondMomentSqrtPvol[0] = std::sqrt(volumeBuffers->scaledSecondMoment[pIdx][0]);
+            volSecondMomentSqrtPvol[1] = std::sqrt(volumeBuffers->scaledSecondMoment[pIdx][1]);
+            volSecondMomentSqrtPvol[2] = std::sqrt(volumeBuffers->scaledSecondMoment[pIdx][2]);
+
+            RGB volSecondMomentSqrtPvolDenoised;
+            volSecondMomentSqrtPvolDenoised[0] = std::sqrt(volumeBuffers->filteredScaledSecondMoment[pIdx][0]);
+            volSecondMomentSqrtPvolDenoised[1] = std::sqrt(volumeBuffers->filteredScaledSecondMoment[pIdx][1]);
+            volSecondMomentSqrtPvolDenoised[2] = std::sqrt(volumeBuffers->filteredScaledSecondMoment[pIdx][2]);
+#endif
+
+            RGB surfNormal = (RGB(surfaceBuffers->normal[pIdx].x, surfaceBuffers->normal[pIdx].y, surfaceBuffers->normal[pIdx].z) + RGB(1.f, 1.f, 1.f)) * 0.5f;
+            RGB surfAlbedo = surfaceBuffers->albedo[pIdx];
+            Float surfSPP = surfaceBuffers->spp[pIdx];
 
             RGB volNormal = (RGB(volumeBuffers->normal[pIdx].x, volumeBuffers->normal[pIdx].y, volumeBuffers->normal[pIdx].z) + RGB(1.f, 1.f, 1.f)) * 0.5f;
             RGB volAlbedo = volumeBuffers->albedo[pIdx];
@@ -369,6 +469,9 @@ struct VSPBuffer {
             Float vspSecondMoment = vspSecondMomentBuffer[pIdx];
 
             Point2i pOffset(p.x, p.y);
+#ifdef INCLUDE_RENDERING
+            image.SetChannels(pOffset, rgbDesc, {rgb[0], rgb[1], rgb[2]});
+#endif
             image.SetChannels(pOffset, surfContributionDesc, {surfContributionPsurf[0], surfContributionPsurf[1], surfContributionPsurf[2]});
             image.SetChannels(pOffset, surfContributionDenoisedDesc, {surfContributionPsurfDenoised[0], surfContributionPsurfDenoised[1], surfContributionPsurfDenoised[2]});
 
@@ -473,6 +576,8 @@ private:
             Float pVolume =  pVolEst[0];
             Float pSurface = 1 - pVolume;
 
+#ifndef DENOISE_AFTER_PRODUCT
+            // TODO: the part for denoise after product on loading buffers
             surfaceBuffers->contribution[pIdx] = {surfContributionPsurf[0] / pSurface,
                                                   surfContributionPsurf[1] / pSurface,
                                                   surfContributionPsurf[2] / pSurface};
@@ -487,10 +592,6 @@ private:
                                                           std::pow(surfSecondMomentSqrtPsurfDenoised[1] / pSurface, 2.f),
                                                           std::pow(surfSecondMomentSqrtPsurfDenoised[2] / pSurface, 2.f)};
 
-            surfaceBuffers->normal[pIdx] = {surfNormal[0]*2.f - 1.0f, surfNormal[1]*2.f - 1.0f, surfNormal[2]*2.f - 1.0f};
-            surfaceBuffers->albedo[pIdx] = {surfAlbedo[0], surfAlbedo[1], surfAlbedo[2]};
-            surfaceBuffers->spp[pIdx] = surfSPP[0];
-
             volumeBuffers->contribution[pIdx] = {volContributionPvol[0] / pVolume,
                                                  volContributionPvol[1] / pVolume,
                                                  volContributionPvol[2] / pVolume};
@@ -504,6 +605,11 @@ private:
             volumeBuffers->filteredSecondMoment[pIdx] = {std::pow(volSecondMomentSqrtPvolDenoised[0] / pVolume, 2.f),
                                                          std::pow(volSecondMomentSqrtPvolDenoised[1] / pVolume, 2.f),
                                                          std::pow(volSecondMomentSqrtPvolDenoised[2] / pVolume, 2.f)};
+#endif
+
+            surfaceBuffers->normal[pIdx] = {surfNormal[0]*2.f - 1.0f, surfNormal[1]*2.f - 1.0f, surfNormal[2]*2.f - 1.0f};
+            surfaceBuffers->albedo[pIdx] = {surfAlbedo[0], surfAlbedo[1], surfAlbedo[2]};
+            surfaceBuffers->spp[pIdx] = surfSPP[0];
 
             volumeBuffers->normal[pIdx]= {volNormal[0]*2.f - 1.0f, volNormal[1]*2.f - 1.0f, volNormal[2]*2.f - 1.0f};
             volumeBuffers->albedo[pIdx] = {volAlbedo[0], volAlbedo[1], volAlbedo[2]};
