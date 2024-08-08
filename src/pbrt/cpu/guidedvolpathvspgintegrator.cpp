@@ -51,6 +51,7 @@ STAT_COUNTER("Integrator/Volume interactions", volumeInteractions);
 STAT_COUNTER("Integrator/Surface interactions", surfaceInteractions);
 
 STAT_INT_DISTRIBUTION("Integrator/Path length", pathLength);
+STAT_INT_DISTRIBUTION("Integrator/Density query", densityQueryCount);
 
 #ifdef PBRT_WITH_PATH_GUIDING
 // GuidedVolPathVSPGIntegrator Method Definitions
@@ -632,6 +633,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
     if (guideScatterDecision)
         vsp = std::max(std::min(vsp, 0.999f), 0.001f);
 
+    int densityQueryCountPerSegment = 0;
+
     if (guideSettings.resampling && !ray.medium.IsHomogeneous()) {
         // Analytical VSPG for homogeneous volume
 
@@ -643,6 +646,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         SampledSpectrum T_maj = SampleT_maj_Resampling(ray, tMax, sampler.Get1D(), rng, lambda,
                 guideScatterDecision, vsp, volumeRatioCompensated, majorantScale,
                 [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj) {
+                    ++ densityQueryCountPerSegment;
+
                     SampledSpectrum sigma_t = mp.sigma_s + mp.sigma_a;
                     SampledSpectrum sigma_n = ClampZero(sigma_maj - sigma_t);
                     Float wi = (sigma_t / sigma_maj * trRatioEst)[channelIdx];
@@ -680,6 +685,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
         beta_resampling *= T_maj / T_maj[channelIdx];
         r_u_resampling *= T_maj / T_maj[channelIdx];
+
+        densityQueryCount << densityQueryCountPerSegment;
 
         if (depth == 0 && calculateTrBuffer)
             trBuffer->AddSample(pPixel, trRatioEst.ToRGB(lambda, *colorSpace));
@@ -844,6 +851,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                                                               guideSettings.VilleminMethod,
                                                               beta_factor, r_u_factor,
                                             [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj) {
+                    ++ densityQueryCountPerSegment;
+
                     // Handle medium scattering event for ray
                     if (!beta) {
                         terminated = true;
@@ -1029,7 +1038,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                         return beta && r_u;
                     }
                 });
-        
+
         bool multiply_T_maj = !(scattered || terminated || !beta || !r_u);
         if (multiply_T_maj) {
             transmittanceWeight *= T_maj / T_maj[channelIdx];
@@ -1042,6 +1051,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
             r_l *= r_u_factor;
             transmittanceWeight *= beta_factor / r_u_factor[channelIdx];
         }
+
+        densityQueryCount << densityQueryCountPerSegment;
     }
     return;
 }
