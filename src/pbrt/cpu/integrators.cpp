@@ -4027,7 +4027,9 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
         // Guiding - Check if we can use guiding. If so intialize the guiding distribution
         Float v = guideSettings.knnLookup ? sampler.Get1D(): -1.0f;
         gbsdf.init(&bsdf, ray, si, v);
+#ifdef OPENPGL_EF_RADIANCE_CACHES
         adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
+#endif
 
         if (guideRR && depth > minRRDepth) {
             survivalProb = specularBounce ? 0.95 : openpgl::cpp::util::GuidedRussianRoulette(OPGLVector3f(beta), OPGLVector3f(adjointEstimate), OPGLVector3f(pixelContributionEstimate), 0.1f);
@@ -4476,7 +4478,9 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                             Float v = sampler.Get1D();
                             gphase.init(&intr.phase, p, ray.d, v);
                             if(guideRR && guideVolumeRR) {
-                                adjointEstimate = gphase.InscatteredRadiance(-ray.d, true);
+#ifdef OPENPGL_RADIANCE_CACHES
+                                adjointEstimate = gphase.InscatteredRadiance(-ray.d);
+#endif
                             }
 
                             // calculate survival property

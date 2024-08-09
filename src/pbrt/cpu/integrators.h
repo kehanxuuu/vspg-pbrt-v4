@@ -487,9 +487,9 @@ public:
 
         GuidingType surfaceGuidingType {EGuideRIS};
         GuidingType volumeGuidingType {EGuideRIS};
-        float guideSurfaceProbability {0.5f};
-        float guideVolumeProbability {0.5f};
-        bool knnLookup {true};
+//        float guideSurfaceProbability {0.5f};
+//        float guideVolumeProbability {0.5f};
+//        bool knnLookup {true};
         int guideNumTrainingWaves {128};
 
         bool storeGuidingCache {false};
@@ -561,14 +561,15 @@ public:
 private:
     // GuidedVolPathVSPGIntegrator Private Methods
     void SampleDistance(Point2i pPixel, RayDifferential &ray, Float tMax,
-                        SampledWavelengths &lambda, Sampler &sampler, RNG rng,
+                        SampledWavelengths &lambda, Sampler &sampler, RNG &rng,
                         bool &scattered, bool &terminated, int &depth,
                         SampledSpectrum &L, SampledSpectrum &beta, SampledSpectrum &r_u, SampledSpectrum &r_l,
                         bool &specularBounce, bool &anyNonSpecularBounces,
                         LightSampleContext &prevIntrContext,
-                        bool &passThroughMedium, bool &lastVertexVolume,
-                        openpgl::cpp::PathSegmentStorage* pathSegmentStorage, openpgl::cpp::PathSegment* pathSegmentData,
-                        GuidedBSDF gbsdf, GuidedPhaseFunction gphase, GuidedInscatteredRadiance ginscatteredradiance,
+                        bool &lastVertexVolume,
+                        openpgl::cpp::PathSegmentStorage* pathSegmentStorage,
+                        openpgl::cpp::PathSegment** pathSegmentDataPointer,
+                        const GuidedBSDF &gbsdf, GuidedPhaseFunction &gphase, GuidedInscatteredRadiance ginscatteredradiance,
                         float rr_correction,
                         SampledSpectrum &transmittanceWeight,
                         VSPBuffer::Sample &vspSample,
@@ -577,9 +578,9 @@ private:
 
     inline Float GetPrimaryRayVolumeScatterProbability(const Point2i &pPixel, bool &scatterPrimary) const;
 
-    inline Float GetSecondaryRayVolumeScatterProbability(GuidedPhaseFunction &gphase, Vector3f wi, bool &scatterSecondary) const;
+    inline Float GetSecondaryRayVolumeScatterProbability(const GuidedPhaseFunction &gphase, Vector3f wi, bool &scatterSecondary) const;
 
-    inline Float GetSecondaryRayVolumeScatterProbability(GuidedBSDF &gbsdf, Vector3f wi, bool &scatterSecondary) const;
+    inline Float GetSecondaryRayVolumeScatterProbability(const GuidedBSDF &gbsdf, Vector3f wi, bool &scatterSecondary) const;
 
     SampledSpectrum SampleLd(const Interaction &intr, const GuidedBSDF *bsdf, const GuidedPhaseFunction *phase,
                              const Float survivalProb, SampledWavelengths &lambda, Sampler sampler,

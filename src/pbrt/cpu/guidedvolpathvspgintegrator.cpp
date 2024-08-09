@@ -75,8 +75,34 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t volumeGuiding = " << guideSettings.guideVolume << std::endl;
     std::cout<< "\t surfaceGuidingType = " << guideSettings.surfaceGuidingType << std::endl;
     std::cout<< "\t volumeGuidingType = " << guideSettings.volumeGuidingType << std::endl;
+    std::cout<< "\t storeGuidingCache = " << guideSettings.storeGuidingCache << std::endl;
     std::cout<< "\t loadGuidingCache = " << guideSettings.loadGuidingCache << std::endl;
-    std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl;
+    std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl << std::endl;
+
+    std::cout<< "\t vspprimaryguiding = " << guideSettings.guidePrimaryVSP << std::endl;
+    std::cout<< "\t vspsecondaryguiding = " << guideSettings.guideSecondaryVSP << std::endl;
+    std::cout<< "\t vspmisratio = " << guideSettings.vspMISRatio << std::endl;
+    std::cout<< "\t vspcriterion = " << guideSettings.vspCriterion << std::endl;
+    std::cout<< "\t vspresampling = " << guideSettings.resampling << std::endl;
+    std::cout<< "\t productdistanceguiding = " << guideSettings.productDistanceGuiding << std::endl;
+    std::cout<< "\t Villemin = " << guideSettings.VilleminMethod << std::endl;
+    std::cout<< "\t collisionProbabilityBias = " << guideSettings.collisionProbabilityBias << std::endl << std::endl;
+
+    std::cout<< "\t storeVSPBuffer = " << guideSettings.storeVSPBuffer << std::endl;
+    std::cout<< "\t loadVSPBuffer = " << guideSettings.loadVSPBuffer << std::endl;
+    std::cout<< "\t vspBufferFileName = " << guideSettings.vspBufferFileName << std::endl << std::endl;
+
+    std::cout<< "\t storeTrBuffer = " << guideSettings.storeTrBuffer << std::endl;
+    std::cout<< "\t loadTrBuffer = " << guideSettings.loadTrBuffer << std::endl;
+    std::cout<< "\t trBufferFileName = " << guideSettings.trBufferFileName << std::endl << std::endl;
+
+    std::cout<< "\t rrguiding = " << guideSettings.guideRR << std::endl;
+    std::cout<< "\t surfacerrguiding = " << guideSettings.guideSurfaceRR << std::endl;
+    std::cout<< "\t volumerrguiding = " << guideSettings.guideVolumeRR << std::endl;
+    std::cout<< "\t storeContributionEstimate = " << guideSettings.storeContributionEstimate << std::endl;
+    std::cout<< "\t loadContributionEstimate = " << guideSettings.loadContributionEstimate << std::endl;
+    std::cout<< "\t contributionEstimateFileName = " << guideSettings.contributionEstimateFileName << std::endl << std::endl;
+
     std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
     std::cout<< "\t regularize = " << regularize << std::endl;
 
@@ -260,7 +286,6 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
     int depth = 0;
     Float etaScale = 1;
 
-    bool passThroughMedium;
     bool lastVertexVolume = false;
 
     SampledSpectrum bsdfWeight(1.f);
@@ -289,16 +314,20 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
             uint64_t hash1 = Hash(sampler.Get1D());
             RNG rng(hash0, hash1);
 
+            // The pointer pathSegmentData is updated in SampleDistance, and we want the updated pointer address
+            // Therefore we need to pass a pointer to pathSegmentData (i.e., a double pointer)
+            openpgl::cpp::PathSegment** pathSegmentDataPointer = &pathSegmentData;
             SampleDistance(pPixel, ray, tMax, lambda, sampler, rng,
                            scattered, terminated, depth,
                            L, beta, r_u, r_l,
                            specularBounce, anyNonSpecularBounces, prevIntrContext,
-                           passThroughMedium, lastVertexVolume,
-                           pathSegmentStorage, pathSegmentData,
+                           lastVertexVolume,
+                           pathSegmentStorage, pathSegmentDataPointer,
                            gbsdf, gphase, ginscatteredradiance, rr_correction,
                            transmittanceWeight,
                            vspSample, guideRR, guideVolumeRR,
                            ced, adjointEstimate, pixelContributionEstimate);
+            pathSegmentData = *pathSegmentDataPointer;
 
             // Handle terminated, scattered, and unscattered medium rays
             if (terminated || !beta || !r_u)
@@ -329,6 +358,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
                 }
             }
 
+            // depth += 1; // For convenience of recording depth at the end of function
             break;
         }
         // Incorporate emission from surface hit by ray
@@ -417,7 +447,9 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         Float v = sampler.Get1D();
         gbsdf.init(&bsdf, ray, si, v);
         if (guideRR && guideSurfaceRR) {
+#ifdef OPENPGL_EF_RADIANCE_CACHES
             adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
+#endif
         }
 
         Float survivalProb = 1.f;
@@ -600,13 +632,14 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
 }
 
 void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential &ray, Float tMax,
-                                                 SampledWavelengths &lambda, Sampler &sampler, RNG rng,
+                                                 SampledWavelengths &lambda, Sampler &sampler, RNG &rng,
                                                  bool &scattered, bool &terminated, int &depth,
                                                  SampledSpectrum &L, SampledSpectrum &beta, SampledSpectrum &r_u, SampledSpectrum &r_l,
                                                  bool &specularBounce, bool &anyNonSpecularBounces, LightSampleContext &prevIntrContext,
-                                                 bool &passThroughMedium, bool &lastVertexVolume,
-                                                 openpgl::cpp::PathSegmentStorage* pathSegmentStorage, openpgl::cpp::PathSegment* pathSegmentData,
-                                                 GuidedBSDF gbsdf, GuidedPhaseFunction gphase,
+                                                 bool &lastVertexVolume,
+                                                 openpgl::cpp::PathSegmentStorage* pathSegmentStorage,
+                                                 openpgl::cpp::PathSegment** pathSegmentDataPointer,
+                                                 const GuidedBSDF &gbsdf, GuidedPhaseFunction &gphase,
                                                  GuidedInscatteredRadiance ginscatteredradiance,
                                                  float rr_correction,
                                                  SampledSpectrum &transmittanceWeight,
@@ -771,8 +804,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
             transmittanceWeight *= selectedCandidate.throughputNumerator
                                    * resamplingFactorScalar / selectedCandidate.throughputDenominator;
-            guiding_addTransmittanceWeight(pathSegmentData, transmittanceWeight, lambda, colorSpace);
-            pathSegmentData = guiding_newVolumePathSegment(pathSegmentStorage, p, -ray.d);
+            guiding_addTransmittanceWeight(*pathSegmentDataPointer, transmittanceWeight, lambda, colorSpace);
+            *pathSegmentDataPointer = guiding_newVolumePathSegment(pathSegmentStorage, p, -ray.d);
 
             if (beta && r_u) {
                 // Sample direct lighting at volume-scattering event
@@ -782,7 +815,9 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                 Float v = sampler.Get1D();
                 gphase.init(&intr.phase, p, ray.d, v);
                 if (guideRR && guideVolumeRR) {
+#ifdef OPENPGL_EF_RADIANCE_CACHES
                     adjointEstimate = gphase.InscatteredRadiance(-ray.d);
+#endif
                 }
 
                 // calculate survival property
@@ -799,12 +834,12 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                 }
 
                 // Preform next-event estimation before RR
-                if(useNEE) {
+                if (useNEE) {
                     SampledSpectrum Ld = SampleLd(intr, nullptr, &gphase, 1.0f, lambda, sampler, r_u);
                     L += beta * Ld;
 
                     // Guiding - add scattered contribution from NEE
-                    guiding_addScatteredDirectLight(pathSegmentData, Ld, lambda, colorSpace);
+                    guiding_addScatteredDirectLight(*pathSegmentDataPointer, Ld, lambda, colorSpace);
                 }
 
                 // Perform stochastic path termination (Russian Roulette)
@@ -837,7 +872,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     specularBounce = false;
                     anyNonSpecularBounces = true;
 
-                    guiding_addVolumeData(pathSegmentData, phaseFunctionWeight, ps->wi, ps->pdf, ps->meanCosine, survivalProb);
+                    guiding_addVolumeData(*pathSegmentDataPointer, phaseFunctionWeight, ps->wi, ps->pdf, ps->meanCosine, survivalProb);
 
                     lastVertexVolume = true;
                 }
@@ -948,8 +983,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                         r_u *= r_u_factor;
                         transmittanceWeight *= beta_factor / r_u_factor[channelIdx];
 
-                        guiding_addTransmittanceWeight(pathSegmentData, transmittanceWeight, lambda, colorSpace);
-                        pathSegmentData = guiding_newVolumePathSegment(pathSegmentStorage, p, -ray.d);
+                        guiding_addTransmittanceWeight(*pathSegmentDataPointer, transmittanceWeight, lambda, colorSpace);
+                        *pathSegmentDataPointer = guiding_newVolumePathSegment(pathSegmentStorage, p, -ray.d);
 
                         if (beta && r_u) {
                             // Sample direct lighting at volume-scattering event
@@ -959,7 +994,9 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                             Float v = sampler.Get1D();
                             gphase.init(&intr.phase, p, ray.d, v);
                             if (guideRR && guideVolumeRR) {
+#ifdef OPENPGL_EF_RADIANCE_CACHES
                                 adjointEstimate = gphase.InscatteredRadiance(-ray.d);
+#endif
                             }
 
                             // calculate survival property
@@ -981,7 +1018,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                                 L += beta * Ld;
 
                                 // Guiding - add scattered contribution from NEE
-                                guiding_addScatteredDirectLight(pathSegmentData, Ld, lambda, colorSpace);
+                                guiding_addScatteredDirectLight(*pathSegmentDataPointer, Ld, lambda, colorSpace);
                             }
 
                             // Perform stochastic path termination (Russian Roulette)
@@ -1013,7 +1050,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                                 specularBounce = false;
                                 anyNonSpecularBounces = true;
 
-                                guiding_addVolumeData(pathSegmentData, phaseFunctionWeight, ps->wi, ps->pdf, ps->meanCosine, survivalProb);
+                                guiding_addVolumeData(*pathSegmentDataPointer, phaseFunctionWeight, ps->wi, ps->pdf, ps->meanCosine, survivalProb);
 
                                 lastVertexVolume = true;
                             }
@@ -1041,10 +1078,10 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
         bool multiply_T_maj = !(scattered || terminated || !beta || !r_u);
         if (multiply_T_maj) {
-            transmittanceWeight *= T_maj / T_maj[channelIdx];
             beta *= T_maj / T_maj[channelIdx];
             r_u *= T_maj / T_maj[channelIdx];
             r_l *= T_maj / T_maj[channelIdx];
+            transmittanceWeight *= T_maj / T_maj[channelIdx];
 
             beta *= beta_factor;
             r_u *= r_u_factor;
@@ -1072,7 +1109,7 @@ inline Float GuidedVolPathVSPGIntegrator::GetPrimaryRayVolumeScatterProbability(
 }
 
 inline Float GuidedVolPathVSPGIntegrator::GetSecondaryRayVolumeScatterProbability(
-        GuidedPhaseFunction &gphase, Vector3f wi, bool &scatterSecondary) const {
+        const GuidedPhaseFunction &gphase, Vector3f wi, bool &scatterSecondary) const {
     Float vsp = gphase.VolumeScatterProbability(wi, guideSettings.vspCriterion == 0);
 
     if (std::isnan(vsp) || vsp < 0.f || vsp > 1.f)
@@ -1083,7 +1120,7 @@ inline Float GuidedVolPathVSPGIntegrator::GetSecondaryRayVolumeScatterProbabilit
 }
 
 inline Float GuidedVolPathVSPGIntegrator::GetSecondaryRayVolumeScatterProbability(
-        GuidedBSDF &gbsdf, Vector3f wi, bool &scatterSecondary) const {
+        const GuidedBSDF &gbsdf, Vector3f wi, bool &scatterSecondary) const {
     Float vsp = gbsdf.VolumeScatterProbability(wi, guideSettings.vspCriterion == 0);
 
     if (std::isnan(vsp) || vsp < 0.f || vsp > 1.f)
@@ -1224,18 +1261,12 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
     bool useNEE = parameters.GetOneBool("usenee", true);
     GuidingSettings guideSettings;
-    guideSettings.knnLookup = parameters.GetOneBool("knnlookup", true);
-    guideSettings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
-    guideSettings.guideVolume = parameters.GetOneBool("volumeguiding", true);
-    guideSettings.guideRR = parameters.GetOneBool("rrguiding", false);
-    guideSettings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
-    guideSettings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);
-
+    guideSettings.guideSurface = parameters.GetOneBool("surfaceguiding", false);
+    guideSettings.guideVolume = parameters.GetOneBool("volumeguiding", false);
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
     guideSettings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
     std::string strVolumeGuidingType = parameters.GetOneString("volumeguidingtype", "mis");
     guideSettings.volumeGuidingType = strVolumeGuidingType == "mis" ? EGuideMIS : EGuideRIS;
-
     guideSettings.storeGuidingCache = parameters.GetOneBool("storeGuidingCache", false);
     guideSettings.loadGuidingCache = parameters.GetOneBool("loadGuidingCache", false);
     guideSettings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
@@ -1247,7 +1278,6 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     guideSettings.vspCriterion = parameters.GetOneInt("vspcriterion", 0);
     guideSettings.resampling = parameters.GetOneBool("vspresampling", false);
     guideSettings.productDistanceGuiding = parameters.GetOneBool("productdistanceguiding", false);
-
     guideSettings.VilleminMethod = parameters.GetOneBool("Villemin", false);
     guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
 
@@ -1262,6 +1292,10 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     guideSettings.trBufferFileName = parameters.GetOneString("trBufferFileName", "");
 
     // Guided RR
+    guideSettings.guideRR = parameters.GetOneBool("rrguiding", false);
+    guideSettings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
+    guideSettings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);
+
     guideSettings.storeContributionEstimate = parameters.GetOneBool("storeContributionEstimate", false);
     guideSettings.loadContributionEstimate = parameters.GetOneBool("loadContributionEstimate", false);
     guideSettings.contributionEstimateFileName = parameters.GetOneString("contributionEstimateFileName", "");
