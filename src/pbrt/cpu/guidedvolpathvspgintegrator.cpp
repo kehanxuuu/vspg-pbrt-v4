@@ -274,8 +274,8 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         guideRR = true;
     }
 
-    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, guideSettings.guideSurface, guideSettings.surfaceGuidingType);
-    GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, guideSettings.guideVolume, guideSettings.volumeGuidingType);
+    GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, guideSettings.guideSurface, guideSettings.guideSecondaryVSP, guideSettings.surfaceGuidingType);
+    GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, guideSettings.guideVolume, guideSettings.guideSecondaryVSP, guideSettings.volumeGuidingType);
     GuidedInscatteredRadiance ginscatteredradiance(guiding_field, volumeSamplingDistribution, guideSettings.productDistanceGuiding);
     float rr_correction = 1.0f;
     float misPDF = 1.0f;
