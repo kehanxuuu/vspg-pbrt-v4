@@ -38,7 +38,8 @@
 [submodule "src/ext/openpgl"]
 	path = src/ext/openpgl
 	url = git@github.com:Fiona730/openpgl.git
-	branch = devel
+	branch = sh/experimental-0-varianceBased-v2
+	# branch = kh/devel-vsp
 [submodule "src/ext/oidn"]
 	path = src/ext/oidn
 	url = https://github.com/OpenImageDenoise/oidn.git

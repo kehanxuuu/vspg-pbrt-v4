@@ -3806,7 +3806,11 @@ GuidedPathIntegrator::GuidedPathIntegrator(const int maxDepth, const int minRRDe
         guiding_sampleStorage = new openpgl::cpp::SampleStorage();
 
         guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
+#ifdef OPENPGL_EF_RADIANCE_CACHES
         [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage(true);
+#else
+        [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage();
+#endif
                    size_t maxPathSegments = this->maxDepth >= 1 ? this->maxDepth*2 : 30;
                    pss->Reserve(maxPathSegments);
                    pss->SetMaxDistance(guidingInfiniteLightDistance);
@@ -4242,7 +4246,11 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
         guiding_sampleStorage = new openpgl::cpp::SampleStorage();
 
         guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
+#ifdef OPENPGL_EF_RADIANCE_CACHES
         [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage(true);
+#else
+        [this]() { openpgl::cpp::PathSegmentStorage* pss = new openpgl::cpp::PathSegmentStorage();
+#endif
                 size_t maxPathSegments = this->maxDepth >= 1 ? this->maxDepth*2 : 30;
                 pss->Reserve(maxPathSegments);
                 pss->SetMaxDistance(guidingInfiniteLightDistance);
