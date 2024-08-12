@@ -33,8 +33,6 @@
 #include <string>
 #include <vector>
 
-#define USE_OPENPGL_IMAGESPACEGUIDINGBUFFER
-
 namespace pbrt {
 
 // Integrator Definition
@@ -322,14 +320,11 @@ class GuidedPathIntegrator : public RayIntegrator {
     openpgl::cpp::Device* guiding_device {nullptr};
     //ThreadLocal<Allocator> threadPathSegmentStorage;
 
-#ifndef USE_OPENPGL_IMAGESPACEGUIDINGBUFFER
-    ContributionEstimate* contributionEstimate {nullptr};
-#else
-    openpgl::cpp::util::ImageSpaceGuidingBuffer* guiding_imageSpaceGuidingBuffer;
-#endif
-    bool contributionEstimateReady {false};
-    bool calulateContributionEstimate {false};
-    int contributionEstimateWave {0};
+    openpgl::cpp::util::ImageSpaceGuidingBuffer* imageSpaceGuidingBuffer;
+
+    bool imageSpaceGuidingBufferReady {false};
+    bool calculateImageSpaceGuidingBuffer {false};
+    int imageSpaceGuidingBufferUpdateWave {0};
     int waveCounter {0};
 };
 #endif
@@ -470,14 +465,11 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     openpgl::cpp::Field* guiding_field {nullptr};
     openpgl::cpp::Device* guiding_device {nullptr};
 
-#ifndef USE_OPENPGL_IMAGESPACEGUIDINGBUFFER
-    ContributionEstimate* contributionEstimate {nullptr};
-#else
-    openpgl::cpp::util::ImageSpaceGuidingBuffer* guiding_imageSpaceGuidingBuffer;
-#endif
-    bool contributionEstimateReady {false};
-    bool calulateContributionEstimate {false};
-    int contributionEstimateWave {0};
+    openpgl::cpp::util::ImageSpaceGuidingBuffer* imageSpaceGuidingBuffer{nullptr};
+
+    bool imageSpaceGuidingBufferReady {false};
+    bool calculateImageSpaceGuidingBuffer {false};
+    int imageSpaceGuidingBufferUpdateWave {0};
     int waveCounter {0};
 };
 #endif

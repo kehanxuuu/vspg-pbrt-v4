@@ -49,164 +49,6 @@ struct OPGLVector3f : public pgl_vec3f {
     } 
 };
 
-struct ContributionEstimate {
-    struct ContributionEstimateData {
-        RGB color;
-        Normal3f normal;
-        RGB albedo;
-    };
-    ContributionEstimate(Vector2i resolution): resolution(resolution){
-        int numPixels = resolution[0] * resolution[1];
-        rgbBuffer = new RGB[numPixels];
-        normalBuffer = new Normal3f[numPixels];
-        albedoBuffer = new RGB[numPixels];
-        resultBuffer = new RGB[numPixels];
-        sppBuffer = new float[numPixels];
-
-        for(int i = 0; i < numPixels; i++) {
-            rgbBuffer[i] = RGB(0.f,0.f,0.f);
-            normalBuffer[i] = Normal3f(0.f,0.f,0.f);
-            albedoBuffer[i] = RGB(0.f,0.f,0.f);
-            resultBuffer[i] = RGB(0.f,0.f,0.f);
-            sppBuffer[i] = 0.f;
-        }
-
-        denoiser = new OIDNDenoiser(resolution, true);
-    }
-
-    ContributionEstimate(std::string fileName){
-        Load(fileName);
-    }
-
-    void Add(Point2i pPixel, ContributionEstimateData sample){
-        int pIdx = pPixel.y * resolution.x + pPixel.x;
-        sppBuffer[pIdx] += 1.f;
-        Float alpha = 1.f / sppBuffer[pIdx];
-        rgbBuffer[pIdx] = (1.f - alpha) * rgbBuffer[pIdx] + alpha * sample.color;
-        normalBuffer[pIdx] = (1.f - alpha) * normalBuffer[pIdx] + alpha * sample.normal;
-        albedoBuffer[pIdx] = (1.f - alpha) * albedoBuffer[pIdx] + alpha * sample.albedo;
-    }
-
-    void Update() {
-        std::cout << "ContributionEstimate::Update()" << std::endl;
-        denoiser->Denoise(rgbBuffer, normalBuffer, albedoBuffer, resultBuffer);
-    }
-
-    SampledSpectrum GetContributionEstimate(Point2i pPixel) const {
-        int pIdx = pPixel.y * resolution.x + pPixel.x;
-        RGB rgbEst = resultBuffer[pIdx];
-        SampledSpectrum spec;
-        spec[0] = rgbEst[0];
-        spec[1] = rgbEst[1];
-        spec[2] = rgbEst[2];
-        return spec;
-    }
-
-    Float GetSPP(Point2i pPixel) const {
-        int pIdx = pPixel.y * resolution.x + pPixel.x;
-        return sppBuffer[pIdx];
-    }
-
-    void Store(std::string fileName) const {
-        PixelFormat format = PixelFormat::Float;
-        Point2i pMin = Point2i(0,0);
-        Point2i pMax = Point2i(resolution.x, resolution.y);
-        Bounds2i pixelBounds = Bounds2i(pMin, pMax);
-        Image image(format, Point2i(resolution),
-                {"R",
-                 "G",
-                 "B",
-                 "Color.R",
-                 "Color.G",
-                 "Color.B",
-                 "N.x",
-                 "N.y",
-                 "N.z",
-                 "Albedo.R",
-                 "Albedo.G",
-                 "Albedo.B",
-                 "spp",});
-        ImageChannelDesc rgbDesc = image.GetChannelDesc({"R", "G", "B"});
-        ImageChannelDesc colorDesc = image.GetChannelDesc({"Color.R", "Color.G", "Color.B"});
-        ImageChannelDesc normalDesc = image.GetChannelDesc({"N.x", "N.y", "N.z"});
-        ImageChannelDesc albedoDesc = image.GetChannelDesc({"Albedo.R", "Albedo.G", "Albedo.B"});
-        ImageChannelDesc sppDesc = image.GetChannelDesc({"spp"});
-
-        ParallelFor2D(pixelBounds, [&](Point2i p) {
-            int pIdx = p.y * resolution.x + p.x;
-        
-            RGB rgb = resultBuffer[pIdx];
-            RGB color = rgbBuffer[pIdx];
-            RGB normal = (RGB(normalBuffer[pIdx].x, normalBuffer[pIdx].y, normalBuffer[pIdx].z) + RGB(1.f, 1.f, 1.f)) * 0.5f;
-            RGB albedo = albedoBuffer[pIdx];
-            Float spp = sppBuffer[pIdx];
-
-            Point2i pOffset(p.x, p.y);
-            image.SetChannels(pOffset, rgbDesc, {rgb[0], rgb[1], rgb[2]});
-            image.SetChannels(pOffset, colorDesc, {color[0], color[1], color[2]});
-            image.SetChannels(pOffset, normalDesc, {normal[0], normal[1], normal[2]});
-            image.SetChannels(pOffset, albedoDesc, {albedo[0], albedo[1], albedo[2]});
-            image.SetChannels(pOffset, sppDesc, {spp});
-
-        });
-
-        image.Write(fileName);
-    }
-
-    void Load(std::string fileName) {
-        ImageAndMetadata imgAndMeta = Image::Read(fileName);
-
-        resolution = Vector2i(imgAndMeta.image.Resolution());
-
-        int numPixels = resolution[0] * resolution[1];
-        rgbBuffer = new RGB[numPixels];
-        normalBuffer = new Normal3f[numPixels];
-        albedoBuffer = new RGB[numPixels];
-        resultBuffer = new RGB[numPixels];
-        sppBuffer = new float[numPixels];
-
-        ImageChannelDesc rgbDesc = imgAndMeta.image.GetChannelDesc({"R", "G", "B"});
-        ImageChannelDesc colorDesc = imgAndMeta.image.GetChannelDesc({"Color.R", "Color.G", "Color.B"});
-        ImageChannelDesc normalDesc = imgAndMeta.image.GetChannelDesc({"N.x", "N.y", "N.z"});
-        ImageChannelDesc albedoDesc = imgAndMeta.image.GetChannelDesc({"Albedo.R", "Albedo.G", "Albedo.B"});
-        ImageChannelDesc sppDesc = imgAndMeta.image.GetChannelDesc({"spp"});
-
-        Point2i pMin = Point2i(0,0);
-        Point2i pMax = Point2i(resolution.x, resolution.y);
-        Bounds2i pixelBounds = Bounds2i(pMin, pMax);
-
-        ParallelFor2D(pixelBounds, [&](Point2i p) {
-            int pIdx = p.y * resolution.x + p.x;
-
-            Point2i pOffset(p.x, p.y);
-            ImageChannelValues rgb = imgAndMeta.image.GetChannels(pOffset, rgbDesc);
-            ImageChannelValues color = imgAndMeta.image.GetChannels(pOffset, colorDesc);
-            ImageChannelValues normal = imgAndMeta.image.GetChannels(pOffset, normalDesc);
-            ImageChannelValues albedo = imgAndMeta.image.GetChannels(pOffset, albedoDesc);
-            ImageChannelValues spp = imgAndMeta.image.GetChannels(pOffset, sppDesc);
-
-            resultBuffer[pIdx] = RGB(rgb[0], rgb[1], rgb[2]);
-            rgbBuffer[pIdx] = RGB(color[0], color[1], color[2]);
-            normalBuffer[pIdx] = Normal3f((normal[0] * 2.f) - 1.f, (normal[1] * 2.f) - 1.f, (normal[2] * 2.f) - 1.f);
-            albedoBuffer[pIdx] = RGB(albedo[0], albedo[1], albedo[2]);
-            sppBuffer[pIdx] = spp[0];
-
-        });
-    }
-
-private:
-    Vector2i resolution;
-
-    RGB *rgbBuffer;
-    Normal3f *normalBuffer;
-    RGB *albedoBuffer;
-    RGB *resultBuffer;
-    float *sppBuffer;
-
-    OIDNDenoiser* denoiser;
-
-};
-
 enum GuidingType{
     EGuideMIS = 0,
     EGuideRIS
@@ -448,7 +290,7 @@ struct GuidedBSDF{
         return m_surfaceSamplingDistribution->GetId();
     }
 
-#ifdef OPENPGL_EF_RADIANCE_CACHES
+#ifdef OPENPGL_RADIANCE_CACHES
     SampledSpectrum IncomingRadiance(const Vector3f wiRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
@@ -570,7 +412,6 @@ struct GuidedPhaseFunction{
             pgl_point2f sample2D = openpgl::cpp::Point2(u[0], u[1]);
             pgl_vec3f pglwi;
             float guidedPDF = m_volumeSamplingDistribution->SamplePDF(sample2D, pglwi);
-            
             Vector3f wiRender = Vector3f(pglwi.x, pglwi.y, pglwi.z);
             Float p = m_phase->p(woRender, wiRender);
             Float phasePDF = m_phase->PDF(woRender, wiRender);
@@ -702,7 +543,7 @@ struct GuidedPhaseFunction{
         return m_phase->MeanCosine();
     }
 
-#ifdef OPENPGL_EF_RADIANCE_CACHES
+#ifdef OPENPGL_RADIANCE_CACHES
     SampledSpectrum IncomingRadiance(const Vector3f wiRender, const bool misWeighted) const {
         SampledSpectrum spec(0.f);
         if (useGuiding){
