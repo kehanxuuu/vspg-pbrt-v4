@@ -3789,6 +3789,9 @@ GuidedPathIntegrator::GuidedPathIntegrator(const int maxDepth, const int minRRDe
             std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl;
             std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
             std::cout<< "\t regularize = " << regularize << std::endl;
+
+        guideTraining = guideSettings.enableGuiding;
+
         guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
         guiding_fieldConfig.Init(PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
 
@@ -4228,6 +4231,8 @@ GuidedVolPathIntegrator::GuidedVolPathIntegrator(int maxDepth, int minRRDepth, b
         std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl;
         std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
         std::cout<< "\t regularize = " << regularize << std::endl;
+
+        guideTraining = guideSettings.guideSurface || guideSettings.guideVolume;
     
         guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
         guiding_fieldConfig.Init(PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
@@ -4994,7 +4999,6 @@ std::unique_ptr<GuidedVolPathIntegrator> GuidedVolPathIntegrator::Create(
     settings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
     settings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);
 
-    settings.enableGuiding = settings.guideSurface || settings.guideVolume;
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
     settings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
     std::string strVolumeGuidingType = parameters.GetOneString("volumeguidingtype", "mis");

@@ -309,7 +309,7 @@ class GuidedPathIntegrator : public RayIntegrator {
 
     // Path Guiding
     GuidingSettings guideSettings;
-    bool guideTraining {true};
+    bool guideTraining {false};
     float guidingInfiniteLightDistance {1e6f};
 
     ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
@@ -392,7 +392,6 @@ class VolPathIntegrator : public RayIntegrator {
 class GuidedVolPathIntegrator : public RayIntegrator {
   public:
     struct GuidingSettings {
-        bool enableGuiding {true};
         bool guideSurface {true};
         bool guideVolume {true};
 
@@ -454,7 +453,7 @@ class GuidedVolPathIntegrator : public RayIntegrator {
 
     // Path Guiding
     GuidingSettings guideSettings;
-    bool guideTraining {true};
+    bool guideTraining {false};
     float guidingInfiniteLightDistance {1e6f};
 
     ThreadLocal<openpgl::cpp::PathSegmentStorage*>* guiding_threadPathSegmentStorage;
