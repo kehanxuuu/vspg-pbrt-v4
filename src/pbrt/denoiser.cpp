@@ -9,7 +9,7 @@ namespace pbrt {
 Denoiser::Denoiser(Vector2i resolution, bool haveAlbedoAndNormal): resolution(resolution), haveAlbedoAndNormal(haveAlbedoAndNormal){}
 
 #if defined(PBRT_WITH_OIDN)
-OIDNDenoiser::OIDNDenoiser(Vector2i resolution, bool haveAlbedoAndNormal): Denoiser(resolution, haveAlbedoAndNormal){
+OIDNDenoiser::OIDNDenoiser(Vector2i resolution, bool haveAlbedoAndNormal, bool filterAlbedoNormal): Denoiser(resolution, haveAlbedoAndNormal), filterFeatures(filterAlbedoNormal){
     oidnDevice = oidn::newDevice();
     oidnDevice.commit();
 

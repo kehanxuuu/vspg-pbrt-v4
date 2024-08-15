@@ -53,6 +53,10 @@ STAT_COUNTER("Integrator/Surface interactions", surfaceInteractions);
 STAT_INT_DISTRIBUTION("Integrator/Path length", pathLength);
 STAT_INT_DISTRIBUTION("Integrator/Density query", densityQueryCount);
 
+STAT_TIME_COUNTER("Guiding Cache Training", guidingCacheUpdateTime);
+STAT_TIME_COUNTER("VSP Buffer Training", vspBufferUpdateTime);
+STAT_TIME_COUNTER("Contribution Buffer Training", contributionBufferUpdateTime);
+
 #ifdef PBRT_WITH_PATH_GUIDING
 // GuidedVolPathVSPGIntegrator Method Definitions
 GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRRDepth, bool useNEE, const GuidingSettings guideSettings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler, Primitive aggregate,
@@ -230,7 +234,9 @@ void GuidedVolPathVSPGIntegrator::PostProcessWave() {
         const size_t numValidSamples = guiding_sampleStorage->GetSizeSurface() + guiding_sampleStorage->GetSizeVolume();
         std::cout << "Guiding Iteration: "<< guiding_field->GetIteration() << "\t numValidSamples: " << numValidSamples << "\t surfaceSamples: " << guiding_sampleStorage->GetSizeSurface() << "\t volumeSamples: " << guiding_sampleStorage->GetSizeVolume() << std::endl;
         if (numValidSamples > 128) {
+            Timer guidingFiledUpdateTimer;
             guiding_field->Update(*guiding_sampleStorage);
+            guidingCacheUpdateTime += guidingFiledUpdateTimer.ElapsedSeconds();
             if (guiding_field->GetIteration() >= guideSettings.guideNumTrainingWaves) {
                 guideTraining = false;
             }
@@ -242,12 +248,16 @@ void GuidedVolPathVSPGIntegrator::PostProcessWave() {
 
     if (waveCounter == std::pow(2.0f, bufferWave)) {
         if (calculateVSPBuffer) {
+            Timer vspBufferTimer;
             vspBuffer->Update();
+            vspBufferUpdateTime += vspBufferTimer.ElapsedSeconds();
             vspBufferReady = true;
         }
 
         if (calculateContributionEstimate) {
+            Timer contributionBufferTimer;
             contributionEstimate->Update();
+            contributionBufferUpdateTime += contributionBufferTimer.ElapsedSeconds();
             contributionEstimateReady = true;
         }
 

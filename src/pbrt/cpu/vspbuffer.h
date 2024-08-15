@@ -124,13 +124,15 @@ struct VSPBuffer {
 
         vspContributionBuffer = new Float[numPixels];
         vspSecondMomentBuffer = new Float[numPixels];
-        denoiser = new OIDNDenoiser(resolution, true);
+        denoiser = new OIDNDenoiser(resolution, true, true); // pre-filter normal and albedo buffers
+        //denoiser = new OIDNDenoiser(resolution, true, false); // do not pre-filter normal and albedo buffers
         isReady = false;
     }
 
     VSPBuffer(const std::string& fileName) {
         Load(fileName);
-        denoiser = new OIDNDenoiser(resolution, true);
+        denoiser = new OIDNDenoiser(resolution, true, true); // pre-filter normal and albedo buffers
+        //denoiser = new OIDNDenoiser(resolution, true, false); // do not pre-filter normal and albedo buffers
         isReady = true;
     }
 

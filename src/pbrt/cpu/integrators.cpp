@@ -52,6 +52,7 @@ namespace pbrt {
 
 STAT_COUNTER("Integrator/Camera rays traced", nCameraRays);
 STAT_TIME_COUNTER("Pure Rendering Time", pureRenderingTime);
+
 // RandomWalkIntegrator Method Definitions
 std::unique_ptr<RandomWalkIntegrator> RandomWalkIntegrator::Create(
     const ParameterDictionary &parameters, Camera camera, Sampler sampler,
@@ -178,6 +179,7 @@ void ImageTileIntegrator::Render() {
     while (!renderingDone) {
         waveStartTimeTotal = progress.ElapsedSeconds();
         // Render current wave's image tiles in parallel
+        Timer pureRenderingTimer;
         ParallelFor2D(pixelBounds, [&](Bounds2i tileBounds) {
             // Render image tile given by _tileBounds_
             ScratchBuffer &scratchBuffer = scratchBuffers.Get();
@@ -218,7 +220,8 @@ void ImageTileIntegrator::Render() {
         waveTimeTotal = waveEndTimeTotal - waveStartTimeTotal;
         remainingTime -= waveTimeTotal;
         if (timeBudget) {
-            progress.Update(waveTimeTotal);
+            // Apply std::ceil to deal with the case of waveTimeTotal < 1
+            progress.Update(std::ceil(waveTimeTotal));
         }
 
         renderingDone = (timeBudget ? remainingTime <= 0 : waveEnd >= spp);
@@ -1309,6 +1312,7 @@ SampledSpectrum VolPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sampl
             beta /= 1 - q;
         }
     }
+    pathLength << depth;
     return L;
 }
 

@@ -32,7 +32,7 @@ class Denoiser {
 #if defined(PBRT_WITH_OIDN)
 class OIDNDenoiser: public Denoiser {
   public:
-    OIDNDenoiser(Vector2i resolution, bool haveAlbedoAndNormal);
+    OIDNDenoiser(Vector2i resolution, bool haveAlbedoAndNormal, bool filterAlbedoNormal = true);
 
     // All pointers should be to GPU memory.
     // |n| and |albedo| should be nullptr iff \haveAlbedoAndNormal| is false.
