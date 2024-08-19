@@ -96,6 +96,8 @@ Reformatting options:
   --toply                       Print a reformatted version of the input file(s) to
                                 standard output and convert all triangle meshes to
                                 PLY files. Does not render an image.
+  --volMajScale                 Majorant scaling factor of the volumes in the scene.
+                                Used for rendering experiments on the server.
   --upgrade                     Upgrade a pbrt-v3 file to pbrt-v4's format.
 )",
             NSpectrumSamples);
@@ -203,6 +205,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&iter, args.end(), "wavefront", &options.wavefront, onError) ||
             ParseArg(&iter, args.end(), "write-partial-images",
                      &options.writePartialImages, onError) ||
+            ParseArg(&iter, args.end(), "volMajScale", &options.volumeMajorantScale, onError) ||
             ParseArg(&iter, args.end(), "upgrade", &options.upgrade, onError)) {
             // success
         } else if (*iter == "--help" || *iter == "-help" || *iter == "-h") {

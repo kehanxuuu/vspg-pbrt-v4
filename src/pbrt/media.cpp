@@ -706,6 +706,9 @@ NanoVDBMedium *NanoVDBMedium::Create(const ParameterDictionary &parameters,
     Float densityOffset = parameters.GetOneFloat("densityoffset", 0.f);
     Float majorantScale = parameters.GetOneFloat("majorantscale", 1.f);
 
+    if (Options->volumeMajorantScale > 0)
+        majorantScale = Options->volumeMajorantScale;
+
     Float g = parameters.GetOneFloat("g", 0.);
     Spectrum sigma_a =
         parameters.GetOneSpectrum("sigma_a", nullptr, SpectrumType::Unbounded, alloc);
@@ -743,6 +746,8 @@ EarthMedium *EarthMedium::Create(const ParameterDictionary &parameters,
     Float decay = parameters.GetOneFloat("decay", 1.f);
     Float densityOffset = parameters.GetOneFloat("densityoffset", 0.f);
     Float majorantScale = parameters.GetOneFloat("majorantscale", 1.f);
+    if (Options->volumeMajorantScale > 0)
+        majorantScale = Options->volumeMajorantScale;
     Float rotationx = parameters.GetOneFloat("rotationx", 0.f);
     Float rotationy = parameters.GetOneFloat("rotationy", 0.f);
     Float rotationz = parameters.GetOneFloat("rotationz", 0.f);

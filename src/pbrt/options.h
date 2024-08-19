@@ -55,6 +55,7 @@ struct PBRTOptions : BasicPBRTOptions {
     pstd::optional<Bounds2i> pixelBounds;
     pstd::optional<Point2i> pixelMaterial;
     Float displacementEdgeScale = 1;
+    Float volumeMajorantScale = -1;
 
     std::string ToString() const;
 };
