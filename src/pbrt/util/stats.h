@@ -44,6 +44,7 @@ class StatsAccumulator {
     StatsAccumulator();
 
     void ReportCounter(const char *name, int64_t val);
+    void ReportTimeCounter(const char *name, double val);
     void ReportMemoryCounter(const char *name, int64_t val);
     void ReportPercentage(const char *name, int64_t num, int64_t denom);
     void ReportRatio(const char *name, int64_t num, int64_t denom);
@@ -89,6 +90,13 @@ class PixelStatsAccumulator {
     static thread_local int64_t var;                                   \
     static StatRegisterer STATS_REG##var([](StatsAccumulator &accum) { \
         accum.ReportCounter(title, var);                               \
+        var = 0;                                                       \
+    });
+
+#define STAT_TIME_COUNTER(title, var)                                       \
+    static thread_local double var;                                   \
+    static StatRegisterer STATS_REG##var([](StatsAccumulator &accum) { \
+        accum.ReportTimeCounter(title, var);                               \
         var = 0;                                                       \
     });
 

@@ -50,7 +50,7 @@
 namespace pbrt {
 
 STAT_COUNTER("Integrator/Camera rays traced", nCameraRays);
-
+STAT_TIME_COUNTER("Pure Rendering Time", pureRenderingTime);
 // RandomWalkIntegrator Method Definitions
 std::unique_ptr<RandomWalkIntegrator> RandomWalkIntegrator::Create(
     const ParameterDictionary &parameters, Camera camera, Sampler sampler,
@@ -166,6 +166,7 @@ void ImageTileIntegrator::Render() {
 
     // Render image in waves
     while (waveStart < spp) {
+        Timer pureRenderingTimer;
         // Render current wave's image tiles in parallel
         ParallelFor2D(pixelBounds, [&](Bounds2i tileBounds) {
             // Render image tile given by _tileBounds_
@@ -191,7 +192,7 @@ void ImageTileIntegrator::Render() {
                      tileBounds.pMin.y, tileBounds.pMax.x, tileBounds.pMax.y);
             progress.Update((waveEnd - waveStart) * tileBounds.Area());
         });
-
+        pureRenderingTime += pureRenderingTimer.ElapsedSeconds();
         PostProcessWave();
 
         // Update start and end wave
@@ -3728,6 +3729,8 @@ std::unique_ptr<Integrator> Integrator::Create(
 }
 
 #ifdef PBRT_WITH_PATH_GUIDING
+STAT_TIME_COUNTER("Guiding Cache Training", guidingCacheUpdateTime);
+STAT_TIME_COUNTER("Image-space Guiding Buffer Training", imageSpaceGudingBufferUpdateTime);
 // GuidedPathIntegrator Method Definitions
 GuidedPathIntegrator::GuidedPathIntegrator(const int maxDepth, const int minRRDepth, const bool useNEE, const GuidingSettings guideSettings, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
                                Primitive aggregate, std::vector<Light> lights,
@@ -3827,7 +3830,9 @@ void GuidedPathIntegrator::PostProcessWave() {
         const size_t numValidSamples = guiding_sampleStorage->GetSizeSurface() + guiding_sampleStorage->GetSizeVolume();
         std::cout << "Guiding Iteration: "<< guiding_field->GetIteration() << "\t numValidSamples: " << numValidSamples << std::endl;
         if(numValidSamples > 128) {
+            Timer guidingFiledUpdateTimer;
             guiding_field->Update(*guiding_sampleStorage);
+            guidingCacheUpdateTime += guidingFiledUpdateTimer.ElapsedSeconds();
             if(guiding_field->GetIteration() >= guideSettings.guideNumTrainingWaves) {
                 guideTraining = false;
             }
@@ -3837,8 +3842,9 @@ void GuidedPathIntegrator::PostProcessWave() {
     guiding_sampleStorage->Clear();
 
     if(calculateImageSpaceGuidingBuffer && waveCounter == std::pow(2.0f, imageSpaceGuidingBufferUpdateWave)) {
-        Timer denoiseTimer;
+        Timer imageSpaceGuidingBufferTimer;
         imageSpaceGuidingBuffer->Update();
+        imageSpaceGudingBufferUpdateTime += imageSpaceGuidingBufferTimer.ElapsedSeconds();
         imageSpaceGuidingBufferReady = true;
         imageSpaceGuidingBufferUpdateWave++;
     }
@@ -4261,7 +4267,9 @@ void GuidedVolPathIntegrator::PostProcessWave() {
         const size_t numValidSamples = guiding_sampleStorage->GetSizeSurface() + guiding_sampleStorage->GetSizeVolume();
         std::cout << "Guiding Iteration: "<< guiding_field->GetIteration() << "\t numValidSamples: " << numValidSamples << "\t surfaceSamples: " << guiding_sampleStorage->GetSizeSurface() << "\t volumeSamples: " << guiding_sampleStorage->GetSizeVolume() << std::endl;
         if(numValidSamples > 128) {
+            Timer guidingFiledUpdateTimer;
             guiding_field->Update(*guiding_sampleStorage);
+            guidingCacheUpdateTime += guidingFiledUpdateTimer.ElapsedSeconds();
             if(guiding_field->GetIteration() >= guideSettings.guideNumTrainingWaves) {
                 guideTraining = false;
             }
@@ -4272,9 +4280,10 @@ void GuidedVolPathIntegrator::PostProcessWave() {
     guiding_sampleStorage->Clear();
 
     if(calculateImageSpaceGuidingBuffer && waveCounter == std::pow(2.0f, imageSpaceGuidingBufferUpdateWave)) {
-        Timer denoiseTimer;
+        Timer imageSpaceGuidingBufferTimer;
         imageSpaceGuidingBuffer->Update();
-        std::cout << "Denoiser::time = " << denoiseTimer.ElapsedSeconds() << std::endl;
+        imageSpaceGudingBufferUpdateTime += imageSpaceGuidingBufferTimer.ElapsedSeconds();
+        std::cout << "Denoiser::time = " << imageSpaceGuidingBufferTimer.ElapsedSeconds() << std::endl;
         imageSpaceGuidingBufferReady = true;
         imageSpaceGuidingBufferUpdateWave++;
     }

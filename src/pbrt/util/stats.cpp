@@ -177,6 +177,7 @@ void PixelStatsAccumulator::ReportRatio(Point2i p, int statIndex, const char *na
 // StatsAccumulator::Stats Definition
 struct StatsAccumulator::Stats {
     std::map<std::string, int64_t> counters;
+    std::map<std::string, double> timeCounters;
     std::map<std::string, int64_t> memoryCounters;
     template <typename T>
     struct Distribution {
@@ -206,6 +207,10 @@ struct StatsAccumulator::Stats {
 // StatsAccumulator Method Definitions
 void StatsAccumulator::ReportCounter(const char *name, int64_t val) {
     stats->counters[name] += val;
+}
+
+void StatsAccumulator::ReportTimeCounter(const char *name, double val) {
+    stats->timeCounters[name] += val;
 }
 
 StatsAccumulator::StatsAccumulator() {
@@ -356,6 +361,15 @@ void StatsAccumulator::Print(FILE *dest) {
         getCategoryAndTitle(counter.first, &category, &title);
         toPrint[category].push_back(
             StringPrintf("%-42s               %12" PRIu64, title, counter.second));
+    }
+
+    for (auto &counter : stats->timeCounters) {
+        if (counter.second == 0)
+            continue;
+        std::string category, title;
+        getCategoryAndTitle(counter.first, &category, &title);
+        toPrint[category].push_back(
+            StringPrintf("%-42s               %7.4f Sec",title, counter.second));
     }
 
     size_t totalMemoryReported = 0;
