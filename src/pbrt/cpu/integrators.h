@@ -476,6 +476,10 @@ class GuidedVolPathIntegrator : public RayIntegrator {
 // GuidedVolPathVSPGIntegrator Definition
 class GuidedVolPathVSPGIntegrator : public RayIntegrator {
 public:
+    enum VSPType{
+      EContribution = 0,
+      EVariance
+    };
     struct GuidingSettings {
         bool guideSurface {true};
         bool guideVolume {true};
@@ -506,7 +510,7 @@ public:
         bool guidePrimaryVSP {false};
         bool guideSecondaryVSP {false};
         float vspMISRatio {0.5f};
-        int vspCriterion {0}; // 0: contribution-based, 1: variance-based
+        VSPType vspCriterion {EContribution}; // 0: contribution-based, 1: variance-based
         bool resampling {false};
         bool productDistanceGuiding {false};
         bool VilleminMethod {false};
@@ -547,7 +551,7 @@ public:
 
     SampledSpectrum Li(Point2i pPixel, RayDifferential ray, SampledWavelengths &lambda, Sampler sampler,
                        ScratchBuffer &scratchBuffer,
-                       VisibleSurface *visibleSurface) const;
+                       VisibleSurface *visibleSurface) const override;
 
     void PostProcessWave() override;
 
@@ -555,7 +559,7 @@ public:
             const ParameterDictionary &parameters, const RGBColorSpace *colorSpace, Camera camera, Sampler sampler,
             Primitive aggregate, std::vector<Light> lights, const FileLoc *loc);
 
-    std::string ToString() const;
+    std::string ToString() const override;
 
 private:
     // GuidedVolPathVSPGIntegrator Private Methods

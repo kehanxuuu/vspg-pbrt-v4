@@ -946,6 +946,7 @@ set (ALL_PBRT_LIBS
   )
 
 link_directories(${CMAKE_INSTALL_PREFIX}/lib)
+link_directories(${CMAKE_INSTALL_PREFIX}/lib64)
 if(PBRT_WITH_PATH_GUIDING)
   set (ALL_PBRT_LIBS ${ALL_PBRT_LIBS}
     ${OPENPGL_LIBRARIES})

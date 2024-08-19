@@ -294,13 +294,13 @@ struct GuidedBSDF {
         return m_surfaceSamplingDistribution->GetId();
     }
 
-    Float VolumeScatterProbability(Vector3f wiRender, bool contributionBased) const {
+    Float VolumeScatterProbability(Vector3f wiRender) const {
         if (!useScatterGuiding) {
             return -1;
         }
         pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
 #ifdef OPENPGL_VSP
-        return m_surfaceSamplingDistribution->VolumeScatterProbability(wi, contributionBased);
+        return m_surfaceSamplingDistribution->VolumeScatterProbability(wi);
 #else
         return -1;
 #endif
@@ -563,13 +563,13 @@ struct GuidedPhaseFunction{
         return m_phase->MeanCosine();
     }
 
-    Float VolumeScatterProbability(Vector3f wiRender, bool contributionBased) const {
+    Float VolumeScatterProbability(Vector3f wiRender) const {
         if (!useScatterGuiding) {
             return -1;
         }
         pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
 #ifdef OPENPGL_VSP
-        return m_volumeSamplingDistribution->VolumeScatterProbability(wi, contributionBased);
+        return m_volumeSamplingDistribution->VolumeScatterProbability(wi);
 #else
         return -1;
 #endif
@@ -664,7 +664,7 @@ struct GuidedInscatteredRadiance {
             return SampledSpectrum(0.f);
         }
         pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
-#ifdef OPENPGL_EF_RADIANCE_CACHES
+#ifdef OPENPGL_RADIANCE_CACHES
         pgl_vec3f radiance = m_volumeSamplingDistribution->OutgoingRadiance(wi);
         // InscatteredRadiance(wi, MeanCosine()); // Wrong, NEE-weighted
         RGBUnboundedSpectrum radianceSpec(*RGBColorSpace::sRGB, RGB(radiance.x, radiance.y, radiance.z));
