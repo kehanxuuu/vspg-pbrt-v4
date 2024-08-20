@@ -10,8 +10,6 @@
 #include <pbrt/util/parallel.h>
 #include <openpgl/cpp/OpenPGL.h>
 
-#define OPENPGL_VSP
-
 #if defined(_MSC_VER)
  // Make MS math.h define M_PI
  #define _USE_MATH_DEFINES
@@ -299,7 +297,7 @@ struct GuidedBSDF {
             return -1;
         }
         pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
-#ifdef OPENPGL_VSP
+#ifdef OPENPGL_VSP_GUIDING
         return m_surfaceSamplingDistribution->VolumeScatterProbability(wi);
 #else
         return -1;
@@ -568,7 +566,7 @@ struct GuidedPhaseFunction{
             return -1;
         }
         pgl_vec3f wi = openpgl::cpp::Vector3(wiRender[0], wiRender[1], wiRender[2]);
-#ifdef OPENPGL_VSP
+#ifdef OPENPGL_VSP_GUIDING
         return m_volumeSamplingDistribution->VolumeScatterProbability(wi);
 #else
         return -1;

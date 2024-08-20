@@ -114,7 +114,9 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 
     guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
     guiding_fieldConfig.Init(PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
+#if defined(OPENPGL_VSP_GUIDING)
     guiding_fieldConfig.SetVarianceBasedVSP(guideSettings.vspCriterion == EVariance);
+#endif
 
     if (guideSettings.loadGuidingCache) {
         if (FileExists(guideSettings.guidingCacheFileName)) {
