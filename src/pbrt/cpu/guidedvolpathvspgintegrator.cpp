@@ -153,7 +153,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 
     if (guideSettings.loadVSPBuffer) {
         if (FileExists(guideSettings.vspBufferFileName)) {
-            vspBuffer = new VSPBuffer(guideSettings.vspBufferFileName);
+            vspBuffer = new VSPBuffer(guideSettings.vspBufferFileName, guideSettings.vspCriterion == EVariance);
             vspBufferReady = true;
             calculateVSPBuffer = false;
         } else {
@@ -163,7 +163,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 
     if (!vspBufferReady && (guideSettings.storeVSPBuffer || guideSettings.guidePrimaryVSP)) {
         calculateVSPBuffer = true;
-        vspBuffer = new VSPBuffer(resolution);
+        vspBuffer = new VSPBuffer(resolution, guideSettings.vspCriterion == EVariance);
     }
 
     if (guideSettings.loadTrBuffer) {
@@ -1118,7 +1118,7 @@ inline Float GuidedVolPathVSPGIntegrator::GetPrimaryRayVolumeScatterProbability(
                                                                                 bool &scatterPrimary) const {
     Float vsp = -1.f;
     if (vspBuffer->Ready()) {
-        vsp = vspBuffer->GetVSP(pPixel, guideSettings.vspCriterion == 0);
+        vsp = vspBuffer->GetVSP(pPixel);
     }
 
     if (std::isnan(vsp) || vsp < 0.f || vsp > 1.f)
