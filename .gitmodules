@@ -38,7 +38,7 @@
 [submodule "src/ext/openpgl"]
 	path = src/ext/openpgl
 	url = git@github.com:Fiona730/openpgl.git
-	branch = sh/experimental-0-varianceBased-v2
+	branch = sh/vsp-v3
 	# branch = kh/devel-vsp
 [submodule "src/ext/oidn"]
 	path = src/ext/oidn

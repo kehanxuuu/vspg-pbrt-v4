@@ -71,7 +71,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
           colorSpace(colorSpace),
           lightSampler(LightSampler::Create(lightSampleStrategy, lights, Allocator())),
           regularize(regularize) {
-    std::cout<< "GuidedVolPathVSPIntegrator:" <<std::endl;
+    std::cout<< "GuidedVolPathVSPGIntegrator:" <<std::endl;
     std::cout<< "\t maxDepth = " << maxDepth << std::endl;
     std::cout<< "\t minRRDepth = " << minRRDepth << std::endl;
     std::cout<< "\t useNEE = " << useNEE << std::endl;
@@ -118,7 +118,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 
     if (guideSettings.loadGuidingCache) {
         if (FileExists(guideSettings.guidingCacheFileName)) {
-            std::cout<< "GuidedVolPathVSPIntegrator: loading guiding cache = "<< guideSettings.guidingCacheFileName <<std::endl;
+            std::cout<< "GuidedVolPathVSPGIntegrator: loading guiding cache = "<< guideSettings.guidingCacheFileName <<std::endl;
             guiding_field = new openpgl::cpp::Field(guiding_device, guideSettings.guidingCacheFileName);
             guideTraining = false;
         } else {
@@ -203,7 +203,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
     //~RayIntegrator();
     if (guideSettings.storeGuidingCache) {
-        std::cout << "GuidedVolPathVSPIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
+        std::cout << "GuidedVolPathVSPGIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
         guiding_field->Store(guideSettings.guidingCacheFileName);
     }
 
@@ -230,7 +230,7 @@ GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
 void GuidedVolPathVSPGIntegrator::PostProcessWave() {
 
     waveCounter++;
-    std::cout << "GuidedVolPathVSPIntegrator::PostProcessWave()" << std::endl;
+    std::cout << "GuidedVolPathVSPGIntegrator::PostProcessWave()" << std::endl;
     if (guideTraining) {
         const size_t numValidSamples = guiding_sampleStorage->GetSizeSurface() + guiding_sampleStorage->GetSizeVolume();
         std::cout << "Guiding Iteration: "<< guiding_field->GetIteration() << "\t numValidSamples: " << numValidSamples << "\t surfaceSamples: " << guiding_sampleStorage->GetSizeSurface() << "\t surfaceInvalidSamples: " << guiding_sampleStorage->GetSizeInvalidSurface() << "\t volumeSamples: " << guiding_sampleStorage->GetSizeVolume() << "\t volumeInvalidSamples: " << guiding_sampleStorage->GetSizeInvalidVolume() << std::endl;
@@ -1268,7 +1268,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::SampleLd(const Interaction &intr, c
 
 std::string GuidedVolPathVSPGIntegrator::ToString() const {
     return StringPrintf(
-            "[ GuidedVolPathVSPIntegrator maxDepth: %d lightSampler: %s regularize: %s ]", maxDepth,
+            "[ GuidedVolPathVSPGIntegrator maxDepth: %d lightSampler: %s regularize: %s ]", maxDepth,
             lightSampler, regularize);
 }
 
