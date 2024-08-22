@@ -703,14 +703,11 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     SampledSpectrum sigma_n = ClampZero(sigma_maj - sigma_t);
                     Float wi = (sigma_t / sigma_maj * trRatioEst)[channelIdx];
                     Float sigmaTTrEstScalar = wi;
-                    if (guideScatterDecision && guideSettings.productDistanceGuiding) {
-                        if (sigma_t[channelIdx] > 0) {
-                            ginscatteredradiance.init(p);
-                            Float L_is = (mp.sigma_s / sigma_t * ginscatteredradiance.InscatteredRadiance(-ray.d, lambda))[channelIdx];
+                    if (guideScatterDecision && guideSettings.productDistanceGuiding && sigma_t[channelIdx] > 0) {
+                        ginscatteredradiance.init(p);
+                        Float L_is = (mp.sigma_s / sigma_t * ginscatteredradiance.InscatteredRadiance(-ray.d, lambda))[channelIdx];
+                        if (L_is > 0)
                             wi *= L_is;
-                        }
-                        else
-                            wi = 0;
                     }
 
                     if (wi > 0) {
@@ -746,27 +743,14 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         CandidateData surfaceCandidate(ray(tMax), MediumProperties(),
                              trRatioEstScalar, trRatioEstScalar, beta_resampling, r_u_resampling);
 
-        if (guideScatterDecision && trRatioEstScalar < 1 && trRatioEstScalar > 0) {
+        if (guideScatterDecision && trRatioEstScalar < 1 && trRatioEstScalar > 0 && weightSum > 0) {
             Float trEstForScale = trRatioEstScalar;
 
             Float volRatio = volumeRatioCompensated * guideSettings.vspMISRatio
                              + (1 - trEstForScale) * (1 - guideSettings.vspMISRatio);
             Float surfRatio = 1 - volRatio;
-            
-            if (guideSettings.productDistanceGuiding) {
-                surfaceCandidate.wi = surfRatio / volRatio * weightSum;
-            }
-            else {
-                Float additionalVolumeTerm = volRatio / (1 - trRatioEstScalar);
-                Float additionalSurfaceTerm = surfRatio / trRatioEstScalar;
 
-                if (!std::isinf(additionalSurfaceTerm) && !std::isinf(additionalVolumeTerm)) {
-                    surfaceCandidate.wi *= additionalSurfaceTerm;
-
-                    weightSum *= additionalVolumeTerm;
-                    selectedCandidate.wi *= additionalVolumeTerm;
-                }
-            }
+            surfaceCandidate.wi = surfRatio / volRatio * weightSum;
         }
 
         weightSum += surfaceCandidate.wi;

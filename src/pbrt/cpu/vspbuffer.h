@@ -169,10 +169,7 @@ struct VSPBuffer {
             // Then we do not need to multiply with (1.f -pVolEst) or pVolEst.
             // Note for the second moment look for the USE_PVOL_CORRECTION earlier whne calcualting the sqrt of the second moment.
             RGB surfaceContribution = surfaceBuffers->filteredContribution[pIdx];
-            RGB surfaceSecondMoment = surfaceBuffers->filteredSecondMomentSqrt[pIdx];
-
             RGB volumeContribution = volumeBuffers->filteredContribution[pIdx];
-            RGB volumeSecondMoment = volumeBuffers->filteredSecondMomentSqrt[pIdx];
 #else
             // If the surface/volume buffers only include volume or surface samples we have
             // to correct with (1.f -pVolEst) and pVolEst.
@@ -321,8 +318,7 @@ struct VSPBuffer {
 
                  "pVolActual",
                  "pVolActualDenoised",
-                 "pVolTargetContrib",
-                 "pVolTargetSecMom",});
+                 "pVolTargetContrib",});
 
         ImageChannelDesc surfContributionDesc = image.GetChannelDesc({"SurfContrib.R", "SurfContrib.G", "SurfContrib.B"});
         ImageChannelDesc surfContributionDenoisedDesc = image.GetChannelDesc({"SurfContribDenoised.R", "SurfContribDenoised.G", "SurfContribDenoised.B"});
@@ -466,7 +462,6 @@ private:
         ImageChannelDesc pVolActualDesc = imgAndMeta.image.GetChannelDesc({"pVolActual"});
         ImageChannelDesc pVolActualDenoisedDesc = imgAndMeta.image.GetChannelDesc({"pVolActualDenoised"});
         ImageChannelDesc pVolTargetContribDesc = imgAndMeta.image.GetChannelDesc({"pVolTargetContrib"});
-        ImageChannelDesc pVolTargetSecMomDesc = imgAndMeta.image.GetChannelDesc({"pVolTargetSecMom"});
 
         Point2i pMin = Point2i(0,0);
         Point2i pMax = Point2i(resolution.x, resolution.y);
@@ -493,7 +488,6 @@ private:
             ImageChannelValues pVol = imgAndMeta.image.GetChannels(pOffset, pVolActualDesc);
             ImageChannelValues pVolEst = imgAndMeta.image.GetChannels(pOffset, pVolActualDenoisedDesc);
             ImageChannelValues vspContribution = imgAndMeta.image.GetChannels(pOffset, pVolTargetContribDesc);
-            ImageChannelValues vspSecondMoment = imgAndMeta.image.GetChannels(pOffset, pVolTargetSecMomDesc);
 
             Float pVolume =  pVolEst[0];
             Float pSurface = 1 - pVolume;
