@@ -871,12 +871,13 @@ private:
     Point2f GetUVs(const Vector3f& p) const {
         Vector3f d = Normalize(p);
         // Order of rotation: Y->X->Z (when getting uv, take the reverse)
-        d = RotateAroundZ(d);
-        d = RotateAroundX(d);
-        d = RotateAroundY(d);
+//        d = RotateAroundZ(d);
+//        d = RotateAroundX(d);
+//        d = RotateAroundY(d);
         Point2f uv = EqualAreaSphereToSquare(d);
         uv[0] *= InvPi;
         uv[0] = uv[0] - std::floor(uv[0]);
+        uv[1] += rotationy;
         uv[1] *= Inv2Pi;
         uv[1] = uv[1] - std::floor(uv[1]);
 
