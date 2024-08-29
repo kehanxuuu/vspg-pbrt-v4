@@ -204,6 +204,14 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 
 GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
     //~RayIntegrator();
+
+    if (guiding_field) {
+        openpgl::cpp::FieldStatistics surfaceStats = guiding_field->GetSurfaceStatistics();
+        std::cout << "Surface Guiding Field Statistics: "<< std::endl << surfaceStats.ToString() << std::endl;
+        openpgl::cpp::FieldStatistics volumeStats = guiding_field->GetVolumeStatistics();
+        std::cout << "Volume Guiding Field Statistics: "<< std::endl << volumeStats.ToString() << std::endl;
+    }
+
     if (guideSettings.storeGuidingCache) {
         std::cout << "GuidedVolPathVSPGIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
         guiding_field->Store(guideSettings.guidingCacheFileName);
@@ -361,6 +369,8 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
             // Accumulate contributions from infinite light sources
             for (const auto &light : infiniteLights) {
                 SampledSpectrum Le = light.Le(ray, lambda);
+                if (light.Type() == LightType::DeltaDirection && depth != 0)
+                    Le = SampledSpectrum(0.f);
                 if (depth == 0 || specularBounce) {
                     L += beta * Le / r_u.Average();
                     guiding_addInfiniteLightEmission(pathSegmentStorage, guidingInfiniteLightDistance, ray, Le, 1.0f, lambda, colorSpace);

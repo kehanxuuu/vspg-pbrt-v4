@@ -288,6 +288,11 @@ class DistantLight : public LightBase {
     SampledSpectrum Phi(SampledWavelengths lambda) const;
 
     PBRT_CPU_GPU
+    SampledSpectrum Le(const Ray &, const SampledWavelengths &lambda) const {
+        return scale * Lemit->Sample(lambda);
+    }
+
+    PBRT_CPU_GPU
     Float PDF_Li(LightSampleContext, Vector3f, bool allowIncompletePDF) const {
         return 0;
     }

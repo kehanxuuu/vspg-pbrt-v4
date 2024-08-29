@@ -76,7 +76,7 @@ class Integrator {
         LOG_VERBOSE("Scene bounds %s", sceneBounds);
         for (auto &light : lights) {
             light.Preprocess(sceneBounds);
-            if (light.Type() == LightType::Infinite)
+            if (light.Type() == LightType::Infinite || light.Type() == LightType::DeltaDirection)
                 infiniteLights.push_back(light);
         }
     }
