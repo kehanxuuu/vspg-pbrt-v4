@@ -123,12 +123,17 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
             std::cout<< "GuidedVolPathVSPGIntegrator: loading guiding cache = "<< guideSettings.guidingCacheFileName <<std::endl;
             guiding_field = new openpgl::cpp::Field(guiding_device, guideSettings.guidingCacheFileName);
             guideTraining = false;
+            enableGuiding = true;
         } else {
             guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
         }
     } else {
         guiding_field = new openpgl::cpp::Field(guiding_device, guiding_fieldConfig);
     }
+
+    if (guideTraining)
+        enableGuiding = true;
+
     guiding_sampleStorage = new openpgl::cpp::SampleStorage();
 
     guiding_threadPathSegmentStorage = new ThreadLocal<openpgl::cpp::PathSegmentStorage*>(
@@ -205,7 +210,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
     //~RayIntegrator();
 
-    if (guiding_field) {
+    if (enableGuiding) {
         openpgl::cpp::FieldStatistics surfaceStats = guiding_field->GetSurfaceStatistics();
         std::cout << "Surface Guiding Field Statistics: "<< std::endl << surfaceStats.ToString() << std::endl;
         openpgl::cpp::FieldStatistics volumeStats = guiding_field->GetVolumeStatistics();

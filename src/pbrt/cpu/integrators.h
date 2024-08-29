@@ -601,6 +601,7 @@ private:
 
     // Path Guiding
     GuidingSettings guideSettings;
+    bool enableGuiding {false};
     bool guideTraining {false};
     float guidingInfiniteLightDistance {1e6f};
 
