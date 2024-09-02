@@ -135,7 +135,7 @@ struct VSPBuffer {
      * Second the buffers for the contribution and sqrt second moment are denoised.
      * Third the VSP buffer for contribution and variance-aware (second moment) are calculated.
      */
-    void Update(){
+    void Update() {
         std::cout << "VSPBuffer::Update()" << std::endl;
         Point2i pMin = Point2i(0,0);
         Point2i pMax = Point2i(resolution.x, resolution.y);

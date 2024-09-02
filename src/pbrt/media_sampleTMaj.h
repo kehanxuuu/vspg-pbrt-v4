@@ -374,7 +374,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
             MediumProperties mp = medium->SamplePoint(ray(tMin), lambda);
 
             r_u_factor = SampledSpectrum(vspMISRatio) / tpScaleFactor + SampledSpectrum(1 - vspMISRatio);
-            if (!callback(ray(tMin), mp, seg->sigma_maj, T_maj)) {
+            if (!callback(ray(tMin), mp, seg->sigma_maj, T_maj, true)) {
                 // Returning out of doubly-nested while loop is not as good perf. wise
                 // on the GPU vs using "done" here.
                 break;
@@ -445,7 +445,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
                 MediumProperties mp = medium->SamplePoint(ray(t), lambda);
 
                 r_u_factor = SampledSpectrum(vspMISRatio) / tpScaleFactor + SampledSpectrum(1 - vspMISRatio);
-                if (!callback(ray(t), mp, seg->sigma_maj, T_maj)) {
+                if (!callback(ray(t), mp, seg->sigma_maj, T_maj, true)) {
                     // Returning out of doubly-nested while loop is not as good perf. wise
                     // on the GPU vs using "done" here.
                     done = true;

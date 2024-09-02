@@ -903,7 +903,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                                                               guideScatterDecision, vsp, guideSettings.vspMISRatio,
                                                               guideSettings.VilleminMethod,
                                                               beta_factor, r_u_factor,
-                                            [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj) {
+                                            [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj, bool activateNDS=false) {
                     ++ densityQueryCountPerSegment;
 
                     // Handle medium scattering event for ray
@@ -948,7 +948,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     Float pScatter = sigma_t[channelIdx] / sigma_maj[channelIdx];
 
                     bool VilleminCollisionProbabilityBias = false;
-                    if (depth == 0 && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias && trBufferLoad) {
+                    if (depth == 0 && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias && trBufferLoad && activateNDS) {
                         VilleminCollisionProbabilityBias = true;
                         Float trEstCache = trBuffer->GetTransmittance(pPixel)[channelIdx];
                         Float gamma = 1 + trEstCache;
