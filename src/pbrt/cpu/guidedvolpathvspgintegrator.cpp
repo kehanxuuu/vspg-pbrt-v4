@@ -54,8 +54,7 @@ STAT_INT_DISTRIBUTION("Integrator/Path length", pathLength);
 STAT_INT_DISTRIBUTION("Integrator/Density query", densityQueryCount);
 
 STAT_TIME_COUNTER("Guiding Cache Training", guidingCacheUpdateTime);
-STAT_TIME_COUNTER("VSP Buffer Training", vspBufferUpdateTime);
-STAT_TIME_COUNTER("Contribution Buffer Training", contributionBufferUpdateTime);
+STAT_TIME_COUNTER("Image Space Guiding Buffer Training", isgBufferUpdateTime);
 
 #ifdef PBRT_WITH_PATH_GUIDING
 // GuidedVolPathVSPGIntegrator Method Definitions
@@ -92,9 +91,9 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t Villemin = " << guideSettings.VilleminMethod << std::endl;
     std::cout<< "\t collisionProbabilityBias = " << guideSettings.collisionProbabilityBias << std::endl << std::endl;
 
-    std::cout<< "\t storeVSPBuffer = " << guideSettings.storeVSPBuffer << std::endl;
-    std::cout<< "\t loadVSPBuffer = " << guideSettings.loadVSPBuffer << std::endl;
-    std::cout<< "\t vspBufferFileName = " << guideSettings.vspBufferFileName << std::endl << std::endl;
+    std::cout<< "\t storeISGBuffer = " << guideSettings.storeISGBuffer << std::endl;
+    std::cout<< "\t loadISGBuffer = " << guideSettings.loadISGBuffer << std::endl;
+    std::cout<< "\t isgBufferFileName = " << guideSettings.isgBufferFileName << std::endl << std::endl;
 
     std::cout<< "\t storeTrBuffer = " << guideSettings.storeTrBuffer << std::endl;
     std::cout<< "\t loadTrBuffer = " << guideSettings.loadTrBuffer << std::endl;
@@ -103,9 +102,6 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t rrguiding = " << guideSettings.guideRR << std::endl;
     std::cout<< "\t surfacerrguiding = " << guideSettings.guideSurfaceRR << std::endl;
     std::cout<< "\t volumerrguiding = " << guideSettings.guideVolumeRR << std::endl;
-    std::cout<< "\t storeContributionEstimate = " << guideSettings.storeContributionEstimate << std::endl;
-    std::cout<< "\t loadContributionEstimate = " << guideSettings.loadContributionEstimate << std::endl;
-    std::cout<< "\t contributionEstimateFileName = " << guideSettings.contributionEstimateFileName << std::endl << std::endl;
 
     std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
     std::cout<< "\t regularize = " << regularize << std::endl;
@@ -152,26 +148,33 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     Vector2i resolution = camera.GetFilm().PixelBounds().Diagonal();
     sensor = camera.GetFilm().GetPixelSensor();
 
-    if (guideSettings.loadVSPBuffer) {
-        if (FileExists(guideSettings.vspBufferFileName)) {
-            vspBuffer = new openpgl::cpp::util::ImageSpaceGuidingBuffer(guideSettings.vspBufferFileName);
-            vspBufferReady = true;
-            calculateVSPBuffer = false;
+    if (guideSettings.loadISGBuffer) {
+        if (FileExists(guideSettings.isgBufferFileName)) {
+            imageSpaceGuidingBuffer = new openpgl::cpp::util::ImageSpaceGuidingBuffer(guideSettings.isgBufferFileName);
+            imageSpaceGuidingBufferReady = true;
+            calculateImageSpaceGuidingBuffer = false;
         } else {
-            std::cout << "Warning: VSP buffer file does not exists: vspBufferFileName = " << guideSettings.vspBufferFileName << std::endl;
+            std::cout << "Warning: ImageSpaceGuidingBuffer file does not exists: isgBufferFileName = " << guideSettings.isgBufferFileName << std::endl;
         }
     }
 
-    if (!vspBufferReady && (guideSettings.storeVSPBuffer || guideSettings.guidePrimaryVSP)) {
-        calculateVSPBuffer = true;
+    if (!imageSpaceGuidingBufferReady && (guideSettings.storeISGBuffer || guideSettings.guidePrimaryVSP || guideSettings.guideRR)) {
+        calculateImageSpaceGuidingBuffer = true;
         openpgl::cpp::util::ImageSpaceGuidingBuffer::Config cfg({resolution.x, resolution.y});
-        cfg.EnableContributionEstimate(false);
-        cfg.EnableVolumeScatterProbabilityEstimate(true);
-        if (guideSettings.vspCriterion == EVariance) {
-            cfg.SetVolumeScatterProbabilityType(PGLVSPTypes::EVariance);
+        if (guideSettings.guideRR) {
+            cfg.EnableContributionEstimate(true);
+        } else { 
+            cfg.EnableContributionEstimate(false);
         }
-        cfg.GetVolumeScatterProbabilityType();
-        vspBuffer = new openpgl::cpp::util::ImageSpaceGuidingBuffer(cfg);
+        if (guideSettings.guidePrimaryVSP) {
+            cfg.EnableVolumeScatterProbabilityEstimate(true);
+            if (guideSettings.vspCriterion == EVariance) {
+                cfg.SetVolumeScatterProbabilityType(PGLVSPTypes::EVariance);
+            }
+        } else {
+            cfg.EnableVolumeScatterProbabilityEstimate(false);
+        }
+        imageSpaceGuidingBuffer = new openpgl::cpp::util::ImageSpaceGuidingBuffer(cfg);
     }
 
     if (guideSettings.loadTrBuffer) {
@@ -187,21 +190,6 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     if (!trBufferLoad && (guideSettings.storeTrBuffer || (guideSettings.guidePrimaryVSP && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias))) {
         calculateTrBuffer = true;
         trBuffer = new TrBuffer(resolution);
-    }
-
-    if (guideSettings.loadContributionEstimate) {
-        if (FileExists(guideSettings.contributionEstimateFileName)) {
-            contributionEstimate = new openpgl::cpp::util::ImageSpaceGuidingBuffer(guideSettings.contributionEstimateFileName);
-            contributionEstimateReady = true;
-            calculateContributionEstimate = false;
-        } else {
-            std::cout << "Warning: Contribution estimate file does not exists: contributionEstimateFileName = " << guideSettings.contributionEstimateFileName << std::endl;
-        }
-    }
-
-    if (!contributionEstimateReady && (guideSettings.storeContributionEstimate || guideSettings.guideRR)){
-        calculateContributionEstimate = true;
-        contributionEstimate = new openpgl::cpp::util::ImageSpaceGuidingBuffer(openpgl::cpp::Point2i(resolution[0], resolution[1]));
     }
 
     if (guideSettings.guideRR) {
@@ -224,23 +212,18 @@ GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
         guiding_field->Store(guideSettings.guidingCacheFileName);
     }
 
-    if (guideSettings.storeVSPBuffer){
-        vspBuffer->Store(guideSettings.vspBufferFileName);
+    if (guideSettings.storeISGBuffer){
+        imageSpaceGuidingBuffer->Store(guideSettings.isgBufferFileName);
     }
 
     if (guideSettings.storeTrBuffer){
         trBuffer->Store(guideSettings.trBufferFileName);
     }
 
-    if (guideSettings.storeContributionEstimate){
-        contributionEstimate->Store(guideSettings.contributionEstimateFileName);      
-    }
-
     delete guiding_device;
     delete guiding_sampleStorage;
     delete guiding_field;
-    delete contributionEstimate;
-    delete vspBuffer;
+    delete imageSpaceGuidingBuffer;
     delete trBuffer;
 }
 
@@ -265,18 +248,11 @@ void GuidedVolPathVSPGIntegrator::PostProcessWave() {
     guiding_sampleStorage->Clear();
 
     if (waveCounter == std::pow(2.0f, bufferWave)) {
-        if (calculateVSPBuffer) {
-            Timer vspBufferTimer;
-            vspBuffer->Update();
-            vspBufferUpdateTime += vspBufferTimer.ElapsedSeconds();
-            vspBufferReady = true;
-        }
-
-        if (calculateContributionEstimate) {
-            Timer contributionBufferTimer;
-            contributionEstimate->Update();
-            contributionBufferUpdateTime += contributionBufferTimer.ElapsedSeconds();
-            contributionEstimateReady = true;
+        if (calculateImageSpaceGuidingBuffer) {
+            Timer isgBufferTimer;
+            imageSpaceGuidingBuffer->Update();
+            isgBufferUpdateTime += isgBufferTimer.ElapsedSeconds();
+            imageSpaceGuidingBufferReady = true;
         }
 
         bufferWave++;
@@ -293,16 +269,15 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
 
     openpgl::cpp::PathSegment* pathSegmentData = nullptr;
 
-    openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample ced;
-    openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample vspSample;
+    openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample isgbSample;
 
     SampledSpectrum pixelContributionEstimate(1.f);
     SampledSpectrum adjointEstimate(1.f);
     bool guideRR = false;
     const bool guideSurfaceRR = guideSettings.guideSurfaceRR;
     const bool guideVolumeRR = guideSettings.guideVolumeRR;
-    if (guideSettings.guideRR && contributionEstimateReady) {
-        openpgl::cpp::Vector3f pgPixelContributionEstimate = contributionEstimate->GetContributionEstimate(openpgl::cpp::Point2i(pPixel[0], pPixel[1]));
+    if (guideSettings.guideRR && imageSpaceGuidingBufferReady) {
+        openpgl::cpp::Vector3f pgPixelContributionEstimate = imageSpaceGuidingBuffer->GetContributionEstimate(openpgl::cpp::Point2i(pPixel[0], pPixel[1]));
         pixelContributionEstimate[0] = pgPixelContributionEstimate.x;
         pixelContributionEstimate[1] = pgPixelContributionEstimate.y;
         pixelContributionEstimate[2] = pgPixelContributionEstimate.z;
@@ -360,8 +335,8 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
                            pathSegmentStorage, pathSegmentDataPointer,
                            gbsdf, gphase, ginscatteredradiance, rr_correction,
                            transmittanceWeight,
-                           vspSample, guideRR, guideVolumeRR,
-                           ced, adjointEstimate, pixelContributionEstimate);
+                           isgbSample, guideRR, guideVolumeRR,
+                           adjointEstimate, pixelContributionEstimate);
             pathSegmentData = *pathSegmentDataPointer;
 
             // Handle terminated, scattered, and unscattered medium rays
@@ -439,7 +414,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         add_direct_contribution = false;
 
         // Initialize _visibleSurf_ at first intersection
-        if (depth == 0 && (visibleSurf || calculateVSPBuffer || calculateContributionEstimate)) {
+        if (depth == 0 && (visibleSurf || calculateImageSpaceGuidingBuffer)) {
             // Estimate BSDF's albedo
             // Define sample arrays _ucRho_ and _uRho_ for reflectance estimate
             constexpr int nRhoSamples = 16;
@@ -463,12 +438,9 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
                 *visibleSurf = VisibleSurface(isect, albedo, lambda);
 
             RGB rgbAlbedo = albedo.ToRGB(lambda, *colorSpace);
-            vspSample.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
-            vspSample.normal = {isect.n[0], isect.n[1], isect.n[2]};
-            vspSample.SetSurfaceEvent(true);
-
-            ced.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
-            ced.normal = {isect.n[0], isect.n[1], isect.n[2]};
+            isgbSample.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
+            isgbSample.normal = {isect.n[0], isect.n[1], isect.n[2]};
+            isgbSample.SetSurfaceEvent(true);
         }
 
         // Terminate path if maximum depth reached
@@ -637,26 +609,15 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
 
     pathLength << depth;
 
-    if(calculateVSPBuffer)
+    if(calculateImageSpaceGuidingBuffer)
     {
 #if defined(PBRT_RGB_RENDERING)
         RGB colorRGB = L.ToRGB(lambda, *colorSpace);
 #else
         RGB colorRGB = sensor->ToSensorRGB(L, lambda);
 #endif
-        vspSample.contribution = {colorRGB[0], colorRGB[1], colorRGB[2]};
-        vspBuffer->AddSample({pPixel[0], pPixel[1]}, vspSample);
-    }
-
-    if (calculateContributionEstimate)
-    {
-#if defined(PBRT_RGB_RENDERING)
-        RGB colorRGB = L.ToRGB(lambda, *colorSpace);
-#else
-        RGB colorRGB = L.ToRGB(lambda, *colorSpace);
-#endif
-        ced.contribution = {colorRGB[0], colorRGB[1], colorRGB[2]};
-        contributionEstimate->AddSample({pPixel[0], pPixel[1]}, ced);
+        isgbSample.contribution = {colorRGB[0], colorRGB[1], colorRGB[2]};
+        imageSpaceGuidingBuffer->AddSample({pPixel[0], pPixel[1]}, isgbSample);
     }
 
     if (guideTraining)
@@ -684,9 +645,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                                                  GuidedInscatteredRadiance ginscatteredradiance,
                                                  float rr_correction,
                                                  SampledSpectrum &transmittanceWeight,
-                                                 openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &vspSample,
+                                                 openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &isgbSample,
                                                  bool guideRR, bool guideVolumeRR,
-                                                 openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &ced,
                                                  SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const {
     int channelIdx = lambda.ChannelIdx();
     
@@ -807,12 +767,9 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
             if (depth == 0) {
                 SampledSpectrum albedo = mp.sigma_s / (mp.sigma_s + mp.sigma_a);
                 RGB rgbAlbedo = albedo.ToRGB(lambda, *colorSpace);
-                vspSample.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
-                vspSample.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
-                vspSample.SetSurfaceEvent(false);
-
-                ced.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
-                ced.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
+                isgbSample.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
+                isgbSample.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
+                isgbSample.SetSurfaceEvent(false);
             }
 
             if (depth++ >= maxDepth) {
@@ -946,7 +903,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     Float um = rng.Uniform<Float>();
                     int mode = SampleDiscrete({pAbsorb, pScatter, pNull}, um);
                     if (mode == 0) {
-                        // Handle absorption along ray path
+                        // Handle absorption along ray path>
                         terminated = true;
                         return false;
 
@@ -978,12 +935,9 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                             SampledSpectrum albedo = mp.sigma_s / (mp.sigma_s + mp.sigma_a);
 
                             RGB rgbAlbedo = albedo.ToRGB(lambda, *colorSpace);
-                            vspSample.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
-                            vspSample.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
-                            vspSample.SetSurfaceEvent(false);
-
-                            ced.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
-                            ced.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
+                            isgbSample.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
+                            isgbSample.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
+                            isgbSample.SetSurfaceEvent(false);
                         }
 
                         // Handle scattering along ray path
@@ -1126,8 +1080,8 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 inline Float GuidedVolPathVSPGIntegrator::GetPrimaryRayVolumeScatterProbability(const Point2i &pPixel,
                                                                                 bool &scatterPrimary) const {
     Float vsp = -1.f;
-    if (vspBuffer->IsReady()) {
-        vsp = vspBuffer->GetVolumeScatterProbabilityEstimate({pPixel.x, pPixel.y});
+    if (imageSpaceGuidingBuffer->IsReady()) {
+        vsp = imageSpaceGuidingBuffer->GetVolumeScatterProbabilityEstimate({pPixel.x, pPixel.y});
     } else {
         vsp = 0.5f;
     }
@@ -1313,9 +1267,9 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
 
     // VSP buffer (screen space, for primary ray VSPG)
-    guideSettings.storeVSPBuffer = parameters.GetOneBool("storeVSPBuffer", false);
-    guideSettings.loadVSPBuffer = parameters.GetOneBool("loadVSPBuffer", false);
-    guideSettings.vspBufferFileName = parameters.GetOneString("vspBufferFileName", "");
+    guideSettings.storeISGBuffer = parameters.GetOneBool("storeISGBuffer", false);
+    guideSettings.loadISGBuffer = parameters.GetOneBool("loadISGBuffer", false);
+    guideSettings.isgBufferFileName = parameters.GetOneString("isgBufferFileName", "");
 
     // Transmittance buffer (screen space, for primary ray VSPG)
     guideSettings.storeTrBuffer = parameters.GetOneBool("storeTrBuffer", false);
@@ -1326,10 +1280,6 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     guideSettings.guideRR = parameters.GetOneBool("rrguiding", false);
     guideSettings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
     guideSettings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);
-
-    guideSettings.storeContributionEstimate = parameters.GetOneBool("storeContributionEstimate", false);
-    guideSettings.loadContributionEstimate = parameters.GetOneBool("loadContributionEstimate", false);
-    guideSettings.contributionEstimateFileName = parameters.GetOneString("contributionEstimateFileName", "");
 
     std::string lightStrategy = parameters.GetOneString("lightsampler", "bvh");
     bool regularize = parameters.GetOneBool("regularize", false);

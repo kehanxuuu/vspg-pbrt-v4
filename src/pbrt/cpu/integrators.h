@@ -499,9 +499,9 @@ public:
         bool loadGuidingCache {false};
         std::string guidingCacheFileName {""};
 
-        bool storeVSPBuffer {false};
-        bool loadVSPBuffer {false};
-        std::string vspBufferFileName {""};
+        bool storeISGBuffer {false};
+        bool loadISGBuffer {false};
+        std::string isgBufferFileName {""};
 
         bool storeTrBuffer {false};
         bool loadTrBuffer {false};
@@ -515,10 +515,6 @@ public:
         bool productDistanceGuiding {false};
         bool VilleminMethod {false};
         bool collisionProbabilityBias {false};
-
-        bool storeContributionEstimate {false};
-        bool loadContributionEstimate {false};
-        std::string contributionEstimateFileName {""};
     };
 
     struct CandidateData {
@@ -575,9 +571,8 @@ private:
                         const GuidedBSDF &gbsdf, GuidedPhaseFunction &gphase, GuidedInscatteredRadiance ginscatteredradiance,
                         float rr_correction,
                         SampledSpectrum &transmittanceWeight,
-                        openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &vspSample,
+                        openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &isgbSample,
                         bool guideRR, bool guideVolumeRR,
-                        openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &ced,
                         SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const;
 
     inline Float GetPrimaryRayVolumeScatterProbability(const Point2i &pPixel, bool &scatterPrimary) const;
@@ -619,16 +614,12 @@ private:
     bool trBufferLoad {false};
     bool calculateTrBuffer {false};
 
-    openpgl::cpp::util::ImageSpaceGuidingBuffer* contributionEstimate{nullptr};
-    openpgl::cpp::util::ImageSpaceGuidingBuffer* vspBuffer{nullptr};
+    openpgl::cpp::util::ImageSpaceGuidingBuffer* imageSpaceGuidingBuffer{nullptr};
 
-    bool contributionEstimateReady {false};
-    bool calculateContributionEstimate {false};
-    bool vspBufferReady {false};
-    bool calculateVSPBuffer {false};
+    bool imageSpaceGuidingBufferReady {false};
+    bool calculateImageSpaceGuidingBuffer {false};
 
     int bufferWave {0};
-
     int waveCounter {0};
 };
 #endif
