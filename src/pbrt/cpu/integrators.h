@@ -575,9 +575,18 @@ private:
                         const GuidedBSDF &gbsdf, GuidedPhaseFunction &gphase, GuidedInscatteredRadiance ginscatteredradiance,
                         float rr_correction,
                         SampledSpectrum &transmittanceWeight,
+#if defined(OPENPGL_IMAGE_SPACE_GUIDING_BUFFER)
+                        openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &vspSample,
+#else
                         VSPBuffer::Sample &vspSample,
+#endif
                         bool guideRR, bool guideVolumeRR,
-                        ContributionEstimate::ContributionEstimateData &ced, SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const;
+#if defined(OPENPGL_IMAGE_SPACE_GUIDING_BUFFER)
+                        openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &ced,
+#else
+                        ContributionEstimate::ContributionEstimateData &ced,
+#endif
+                        SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const;
 
     inline Float GetPrimaryRayVolumeScatterProbability(const Point2i &pPixel, bool &scatterPrimary) const;
 
@@ -614,17 +623,22 @@ private:
     openpgl::cpp::Field* guiding_field {nullptr};
     openpgl::cpp::Device* guiding_device {nullptr};
 
-    VSPBuffer* vspBuffer {nullptr};
-    bool vspBufferReady {false};
-    bool calculateVSPBuffer {false};
-
     TrBuffer* trBuffer {nullptr};
     bool trBufferLoad {false};
     bool calculateTrBuffer {false};
 
+
+#if defined(OPENPGL_IMAGE_SPACE_GUIDING_BUFFER)
+    openpgl::cpp::util::ImageSpaceGuidingBuffer* contributionEstimate{nullptr};
+    openpgl::cpp::util::ImageSpaceGuidingBuffer* vspBuffer{nullptr};
+#else
     ContributionEstimate* contributionEstimate {nullptr};
+    VSPBuffer* vspBuffer {nullptr};
+#endif 
     bool contributionEstimateReady {false};
     bool calculateContributionEstimate {false};
+    bool vspBufferReady {false};
+    bool calculateVSPBuffer {false};
 
     int bufferWave {0};
 
