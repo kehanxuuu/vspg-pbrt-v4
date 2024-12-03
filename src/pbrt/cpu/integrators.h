@@ -25,7 +25,7 @@
 
 #ifdef PBRT_WITH_PATH_GUIDING
 #include <pbrt/cpu/guiding.h>
-#include <pbrt/cpu/vspbuffer.h>
+#include <pbrt/cpu/trbuffer.h>
 #endif
 
 #include <functional>
