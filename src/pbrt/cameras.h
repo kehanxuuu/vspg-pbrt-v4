@@ -182,6 +182,11 @@ class CameraBase {
             sppScale * RenderFromCamera(DownZFromCamera.ApplyInverse(py - pDownZ), time);
     }
 
+    PBRT_CPU_GPU
+    void SetMedium(Medium medium) {
+        this->medium = medium;
+    }
+
   protected:
     // CameraBase Protected Members
     CameraTransform cameraTransform;

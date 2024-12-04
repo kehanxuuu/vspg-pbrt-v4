@@ -265,6 +265,7 @@ class BasicScene {
     void SetOptions(SceneEntity filter, SceneEntity film, CameraSceneEntity camera,
                     SceneEntity sampler, SceneEntity integrator, SceneEntity accelerator);
 
+    void CreateCamera(CameraSceneEntity camera);
     void AddNamedMaterial(std::string name, SceneEntity material);
     int AddMaterial(SceneEntity material);
     void AddMedium(MediumSceneEntity medium);
@@ -410,6 +411,7 @@ class BasicSceneBuilder : public ParserTarget {
     void MediumInterface(const std::string &insideName, const std::string &outsideName,
                          FileLoc loc);
     void WorldBegin(FileLoc loc);
+    void WorldEnd(FileLoc loc);
     void AttributeBegin(FileLoc loc);
     void AttributeEnd(FileLoc loc);
     void Attribute(const std::string &target, ParsedParameterVector params, FileLoc loc);
