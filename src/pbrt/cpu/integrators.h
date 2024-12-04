@@ -476,10 +476,16 @@ class GuidedVolPathIntegrator : public RayIntegrator {
 // GuidedVolPathVSPGIntegrator Definition
 class GuidedVolPathVSPGIntegrator : public RayIntegrator {
 public:
-    enum VSPType{
+    enum VSPCriterion{
       EContribution = 0,
       EVariance
     };
+
+    enum VSPSamplingMethodType {
+      EResampling,
+      EVillemin
+    };
+
     struct GuidingSettings {
         bool guideSurface {true};
         bool guideVolume {true};
@@ -507,13 +513,14 @@ public:
         bool loadTrBuffer {false};
         std::string trBufferFileName {""};
 
-        bool guidePrimaryVSP {false};
-        bool guideSecondaryVSP {false};
+        bool guideVSP {false};
+        bool guidePrimaryVSP {true};
+        bool guideSecondaryVSP {true};
+        VSPSamplingMethodType guideVSPSamplingMethod {VSPSamplingMethodType::EResampling};
+
         float vspMISRatio {0.5f};
-        VSPType vspCriterion {EContribution}; // 0: contribution-based, 1: variance-based
-        bool resampling {false};
+        VSPCriterion vspCriterion {EContribution};
         bool productDistanceGuiding {false};
-        bool VilleminMethod {false};
         bool collisionProbabilityBias {false};
     };
 

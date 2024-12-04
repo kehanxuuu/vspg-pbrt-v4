@@ -82,13 +82,13 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t loadGuidingCache = " << guideSettings.loadGuidingCache << std::endl;
     std::cout<< "\t guidingCacheFileName = " << guideSettings.guidingCacheFileName << std::endl << std::endl;
 
+    std::cout<< "\t vspguiding = " << guideSettings.guideVSP << std::endl;
     std::cout<< "\t vspprimaryguiding = " << guideSettings.guidePrimaryVSP << std::endl;
     std::cout<< "\t vspsecondaryguiding = " << guideSettings.guideSecondaryVSP << std::endl;
     std::cout<< "\t vspmisratio = " << guideSettings.vspMISRatio << std::endl;
-    std::cout<< "\t vspcriterion = " << guideSettings.vspCriterion << std::endl;
-    std::cout<< "\t vspresampling = " << guideSettings.resampling << std::endl;
+    std::cout<< "\t vspcriterion = " << (guideSettings.vspCriterion == EContribution ? "Contribution" : "Variance") << std::endl;
+    std::cout<< "\t vspsamplingmethod = " << (guideSettings.guideVSPSamplingMethod == EResampling ? "Resampling" : "Villemin") << std::endl;
     std::cout<< "\t productdistanceguiding = " << guideSettings.productDistanceGuiding << std::endl;
-    std::cout<< "\t Villemin = " << guideSettings.VilleminMethod << std::endl;
     std::cout<< "\t collisionProbabilityBias = " << guideSettings.collisionProbabilityBias << std::endl << std::endl;
 
     std::cout<< "\t storeISGBuffer = " << guideSettings.storeISGBuffer << std::endl;
@@ -158,7 +158,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
         }
     }
 
-    if (!imageSpaceGuidingBufferReady && (guideSettings.storeISGBuffer || guideSettings.guidePrimaryVSP || guideSettings.guideRR)) {
+    if (!imageSpaceGuidingBufferReady && (guideSettings.storeISGBuffer || (guideSettings.guideVSP && guideSettings.guidePrimaryVSP) || guideSettings.guideRR)) {
         calculateImageSpaceGuidingBuffer = true;
         openpgl::cpp::util::ImageSpaceGuidingBuffer::Config cfg({resolution.x, resolution.y});
         if (guideSettings.guideRR) {
@@ -166,7 +166,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
         } else { 
             cfg.EnableContributionEstimate(false);
         }
-        if (guideSettings.guidePrimaryVSP) {
+        if (guideSettings.guideVSP && guideSettings.guidePrimaryVSP) {
             cfg.EnableVolumeScatterProbabilityEstimate(true);
             if (guideSettings.vspCriterion == EVariance) {
                 cfg.SetVolumeScatterProbabilityType(PGLVSPTypes::EVariance);
@@ -187,7 +187,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
         }
     }
 
-    if (!trBufferLoad && (guideSettings.storeTrBuffer || (guideSettings.guidePrimaryVSP && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias))) {
+    if (!trBufferLoad && (guideSettings.storeTrBuffer || (guideSettings.guideVSP && guideSettings.guidePrimaryVSP && guideSettings.guideVSPSamplingMethod ==  EVillemin && guideSettings.collisionProbabilityBias))) {
         calculateTrBuffer = true;
         trBuffer = new TrBuffer(resolution);
     }
@@ -655,11 +655,11 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
     bool guideScatterDecision = false;
     Float vsp = -1.f;
     if (depth == 0) {
-        if (guideSettings.guidePrimaryVSP)
+        if (guideSettings.guideVSP && guideSettings.guidePrimaryVSP)
             vsp = GetPrimaryRayVolumeScatterProbability(pPixel, guideScatterDecision);
     }
     else {
-        if (guideSettings.guideSecondaryVSP) {
+        if (guideSettings.guideVSP && guideSettings.guideSecondaryVSP) {
             if (lastVertexVolume)
                 vsp = GetSecondaryRayVolumeScatterProbability(gphase, ray.d, guideScatterDecision);
             else
@@ -672,7 +672,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
     int densityQueryCountPerSegment = 0;
 
-    if (guideSettings.resampling && !ray.medium.IsHomogeneous()) {
+    if (guideSettings.guideVSPSamplingMethod == EResampling && !ray.medium.IsHomogeneous()) {
         // Analytical VSPG for homogeneous volume
 
         Float volumeRatioCompensated, majorantScale;
@@ -871,7 +871,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         SampledSpectrum beta_factor(1.f), r_u_factor(1.f);
         SampledSpectrum T_maj = SampleT_maj_OpticalDepthSpace(ray, tMax, sampler.Get1D(), rng, lambda,
                                                               guideScatterDecision, vsp, guideSettings.vspMISRatio,
-                                                              guideSettings.VilleminMethod,
+                                                              guideSettings.guideVSPSamplingMethod == EVillemin,
                                                               beta_factor, r_u_factor,
                                             [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj, bool activateNDS=false) {
                     ++ densityQueryCountPerSegment;
@@ -918,7 +918,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     Float pScatter = sigma_t[channelIdx] / sigma_maj[channelIdx];
 
                     bool VilleminCollisionProbabilityBias = false;
-                    if (depth == 0 && guideSettings.VilleminMethod && guideSettings.collisionProbabilityBias && trBufferLoad && activateNDS) {
+                    if (depth == 0 && guideSettings.guideVSPSamplingMethod == EVillemin && guideSettings.collisionProbabilityBias && trBufferLoad && activateNDS) {
                         VilleminCollisionProbabilityBias = true;
                         Float trEstCache = trBuffer->GetTransmittance(pPixel)[channelIdx];
                         Float gamma = 1 + trEstCache;
@@ -1263,13 +1263,26 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     guideSettings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
 
     // VSP guiding
-    guideSettings.guidePrimaryVSP = parameters.GetOneBool("vspprimaryguiding", false);
-    guideSettings.guideSecondaryVSP = parameters.GetOneBool("vspsecondaryguiding", false);
+    guideSettings.guideVSP = parameters.GetOneBool("vspguiding", false);
+    guideSettings.guidePrimaryVSP = parameters.GetOneBool("vspprimaryguiding", true);
+    guideSettings.guideSecondaryVSP = parameters.GetOneBool("vspsecondaryguiding", true);
+
+    std::string strVSPSamplingMethod = parameters.GetOneString("vspsamplingmethod", "resampling");
+    if(strVSPSamplingMethod == "Resampling" || strVSPSamplingMethod == "resampling") {
+        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EResampling;
+    } else if (strVSPSamplingMethod == "Villemin" || strVSPSamplingMethod == "villemin") {
+        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EVillemin;
+    } 
     guideSettings.vspMISRatio = parameters.GetOneFloat("vspmisratio", 0.5f);
-    guideSettings.vspCriterion = (VSPType)parameters.GetOneInt("vspcriterion", 0);
-    guideSettings.resampling = parameters.GetOneBool("vspresampling", false);
+
+    std::string strVSPCreterion = parameters.GetOneString("vspcriterion", "Contribution");
+    if(strVSPCreterion == "Contribution" || strVSPCreterion == "contribution") {
+        guideSettings.vspCriterion = VSPCriterion::EContribution;
+    } else if (strVSPCreterion == "Variance" || strVSPCreterion == "variance") {
+        guideSettings.vspCriterion = VSPCriterion::EVariance;
+    } 
+
     guideSettings.productDistanceGuiding = parameters.GetOneBool("productdistanceguiding", false);
-    guideSettings.VilleminMethod = parameters.GetOneBool("Villemin", false);
     guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
 
     // VSP buffer (screen space, for primary ray VSPG)
