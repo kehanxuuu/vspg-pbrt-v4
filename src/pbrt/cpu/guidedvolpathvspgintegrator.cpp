@@ -74,6 +74,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t maxDepth = " << maxDepth << std::endl;
     std::cout<< "\t minRRDepth = " << minRRDepth << std::endl;
     std::cout<< "\t useNEE = " << useNEE << std::endl;
+
     std::cout<< "\t surfaceGuiding = " << guideSettings.guideSurface << std::endl;
     std::cout<< "\t volumeGuiding = " << guideSettings.guideVolume << std::endl;
     std::cout<< "\t surfaceGuidingType = " << guideSettings.surfaceGuidingType << std::endl;
@@ -88,8 +89,8 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t vspmisratio = " << guideSettings.vspMISRatio << std::endl;
     std::cout<< "\t vspcriterion = " << (guideSettings.vspCriterion == EContribution ? "Contribution" : "Variance") << std::endl;
     std::cout<< "\t vspsamplingmethod = " << (guideSettings.guideVSPSamplingMethod == EResampling ? "Resampling" : "Villemin") << std::endl;
-    std::cout<< "\t productdistanceguiding = " << guideSettings.productDistanceGuiding << std::endl;
     std::cout<< "\t collisionProbabilityBias = " << guideSettings.collisionProbabilityBias << std::endl << std::endl;
+    std::cout<< "\t productdistanceguiding = " << guideSettings.productDistanceGuiding << std::endl;
 
     std::cout<< "\t storeISGBuffer = " << guideSettings.storeISGBuffer << std::endl;
     std::cout<< "\t loadISGBuffer = " << guideSettings.loadISGBuffer << std::endl;
@@ -370,7 +371,6 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
                 }
             }
 
-            // depth += 1; // For convenience of recording depth at the end of function
             break;
         }
         // Incorporate emission from surface hit by ray
@@ -652,6 +652,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                                                  SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const {
     int channelIdx = lambda.ChannelIdx();
     
+    // Retrieve the target VSP value from the data structure for the primary or secondary ray
     bool guideScatterDecision = false;
     Float vsp = -1.f;
     if (depth == 0) {
@@ -672,9 +673,15 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
     int densityQueryCountPerSegment = 0;
 
-    if (guideSettings.guideVSPSamplingMethod == EResampling && !ray.medium.IsHomogeneous()) {
-        // Analytical VSPG for homogeneous volume
-
+    // Two routines: resampling & delta tracking
+    // The resampling routine: the standard resampling weights achieve the same sample distribution as delta tracking; our method modifies them to achieve VSP guiding
+    // The delta tracking routine: can modify the sample distribution through adjusting distance sampling PDF and the real/null-collision probabilities
+    
+    bool use_resampling = guideSettings.guideVSPSamplingMethod == EResampling && !ray.medium.IsHomogeneous();
+    // Homogeneous volume: can do analytical VSPG, always enters the delta tracking routine
+    // Heterogeneous volume: NDS & NDS+ -> delta tracking routine; resampling -> the resampling routine
+    if (use_resampling) {
+        // The resampling routine
         Float volumeRatioCompensated, majorantScale;
         Float weightSum = 0;
         SampledSpectrum trRatioEst(1.f), beta_resampling(1.f), r_u_resampling(1.f);
@@ -684,7 +691,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                 guideScatterDecision, vsp, volumeRatioCompensated, majorantScale,
                 [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj) {
                     ++ densityQueryCountPerSegment;
-
+                    // For each volume sample, compute the standard resampling weights (achieve the delta tracking distribution)
                     SampledSpectrum sigma_t = mp.sigma_s + mp.sigma_a;
                     SampledSpectrum sigma_n = ClampZero(sigma_maj - sigma_t);
                     Float wi = (sigma_t / sigma_maj * trRatioEst)[channelIdx];
@@ -698,6 +705,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
                     if (wi > 0) {
                         weightSum += wi;
+                        // Reservoir sampling (he new volume sample VS the previous volume sample)
                         if (sampler.Get1D() < wi / weightSum) {
                             Float pdf = T_maj[channelIdx] * sigma_t[channelIdx];
                             SampledSpectrum throughputNumerator = beta_resampling *
@@ -722,6 +730,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
         densityQueryCount << densityQueryCountPerSegment;
 
+        // Record the ratio tracking estimate to store in the transmittance buffer
         if (depth == 0 && calculateTrBuffer)
             trBuffer->AddSample(pPixel, trRatioEst.ToRGB(lambda, *colorSpace));
 
@@ -729,9 +738,12 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         CandidateData surfaceCandidate(ray(tMax), MediumProperties(),
                              trRatioEstScalar, trRatioEstScalar, beta_resampling, r_u_resampling);
 
+        // VSP guiding through adjusting the resampling weights
+        // Only adjust the surface resampling weights, an equivalent but simplified version of Eq. (24)
         if (guideScatterDecision && trRatioEstScalar < 1 && trRatioEstScalar > 0 && weightSum > 0) {
             Float trEstForScale = trRatioEstScalar;
 
+            // Defensive resampling (i.e., MIS between VSP guiding and delta tracking)
             Float volRatio = volumeRatioCompensated * guideSettings.vspMISRatio
                              + (1 - trEstForScale) * (1 - guideSettings.vspMISRatio);
             Float surfRatio = 1 - volRatio;
@@ -745,6 +757,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         if (weightSum == 0) {
             return;
         }
+        // Reservoir sampling (the surface sample VS the volume sample)
         else if (sampler.Get1D() < surfaceCandidate.wi / weightSum) {
             selectedCandidate = surfaceCandidate;
             selectSurface = true;
@@ -753,6 +766,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         Float resamplingFactorScalar = weightSum * selectedCandidate.sigmaTTrEst / selectedCandidate.wi;
         
         if (selectSurface) {
+            // Select the surface event = pass through the volume
             beta *= selectedCandidate.throughputNumerator * resamplingFactorScalar;
             r_u *= selectedCandidate.throughputDenominator;
 
@@ -763,6 +777,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
             }
         }
         else {
+            // Select the volume event = continue scattering inside the volume
             Point3f p = selectedCandidate.p;
             MediumProperties mp = selectedCandidate.mp;
 
@@ -868,6 +883,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         }
     }
     else {
+        // The delta tracking routine
         SampledSpectrum beta_factor(1.f), r_u_factor(1.f);
         SampledSpectrum T_maj = SampleT_maj_OpticalDepthSpace(ray, tMax, sampler.Get1D(), rng, lambda,
                                                               guideScatterDecision, vsp, guideSettings.vspMISRatio,
@@ -919,7 +935,10 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 
                     bool VilleminCollisionProbabilityBias = false;
                     if (depth == 0 && guideSettings.guideVSPSamplingMethod == EVillemin && guideSettings.collisionProbabilityBias && trBufferLoad && activateNDS) {
+                        // NDS+: adjust the real/null-collision probability
                         VilleminCollisionProbabilityBias = true;
+                        // Requires pre-computed transmittance estimate
+                        // Therefore only enabled for the primary ray
                         Float trEstCache = trBuffer->GetTransmittance(pPixel)[channelIdx];
                         Float gamma = 1 + trEstCache;
                         pScatter = pow(pScatter, 1 / gamma);
@@ -1251,6 +1270,8 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     int maxDepth = parameters.GetOneInt("maxdepth", 5);
     int minRRDepth = parameters.GetOneInt("minrrdepth", 1);
     bool useNEE = parameters.GetOneBool("usenee", true);
+
+    // Directional guiding parameters
     GuidingSettings guideSettings;
     guideSettings.guideSurface = parameters.GetOneBool("surfaceguiding", false);
     guideSettings.guideVolume = parameters.GetOneBool("volumeguiding", false);
@@ -1262,17 +1283,11 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     guideSettings.loadGuidingCache = parameters.GetOneBool("loadGuidingCache", false);
     guideSettings.guidingCacheFileName = parameters.GetOneString("guidingCacheFileName", "");
 
-    // VSP guiding
+
+    // VSP guiding parameters
     guideSettings.guideVSP = parameters.GetOneBool("vspguiding", false);
     guideSettings.guidePrimaryVSP = parameters.GetOneBool("vspprimaryguiding", true);
     guideSettings.guideSecondaryVSP = parameters.GetOneBool("vspsecondaryguiding", true);
-
-    std::string strVSPSamplingMethod = parameters.GetOneString("vspsamplingmethod", "resampling");
-    if(strVSPSamplingMethod == "Resampling" || strVSPSamplingMethod == "resampling") {
-        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EResampling;
-    } else if (strVSPSamplingMethod == "Villemin" || strVSPSamplingMethod == "villemin") {
-        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EVillemin;
-    } 
     guideSettings.vspMISRatio = parameters.GetOneFloat("vspmisratio", 0.5f);
 
     std::string strVSPCreterion = parameters.GetOneString("vspcriterion", "Contribution");
@@ -1282,20 +1297,28 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
         guideSettings.vspCriterion = VSPCriterion::EVariance;
     } 
 
-    guideSettings.productDistanceGuiding = parameters.GetOneBool("productdistanceguiding", false);
-    guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
+    std::string strVSPSamplingMethod = parameters.GetOneString("vspsamplingmethod", "resampling");
+    if(strVSPSamplingMethod == "Resampling" || strVSPSamplingMethod == "resampling") {
+        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EResampling;
+    } else if (strVSPSamplingMethod == "Villemin" || strVSPSamplingMethod == "villemin") {
+        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EVillemin;
+    }
 
-    // VSP buffer (screen space, for primary ray VSPG)
+    guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
+    guideSettings.productDistanceGuiding = parameters.GetOneBool("productdistanceguiding", false);
+
+
+    // Image space buffer parameters (for primary ray VSPG)
     guideSettings.storeISGBuffer = parameters.GetOneBool("storeISGBuffer", false);
     guideSettings.loadISGBuffer = parameters.GetOneBool("loadISGBuffer", false);
     guideSettings.isgBufferFileName = parameters.GetOneString("isgBufferFileName", "");
 
-    // Transmittance buffer (screen space, for primary ray VSPG)
+    // Transmittance buffer parameters (for primary ray VSPG, used only in NDS+)
     guideSettings.storeTrBuffer = parameters.GetOneBool("storeTrBuffer", false);
     guideSettings.loadTrBuffer = parameters.GetOneBool("loadTrBuffer", false);
     guideSettings.trBufferFileName = parameters.GetOneString("trBufferFileName", "");
 
-    // Guided RR
+    // Guided RR parameters
     guideSettings.guideRR = parameters.GetOneBool("rrguiding", false);
     guideSettings.guideSurfaceRR = parameters.GetOneBool("surfacerrguiding", true);
     guideSettings.guideVolumeRR = parameters.GetOneBool("volumerrguiding", true);

@@ -130,6 +130,8 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u
     return ray.medium.Dispatch(sample);
 }
 
+// The volume grid traversal logic for the resampling routine
+// Always continue the distance sampling process until sampling pass the volume
 template <typename ConcreteMedium, typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u, RNG &rng,
                                                     const SampledWavelengths &lambda,
@@ -164,6 +166,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u
         return SampledSpectrum(1.f);
     }
 
+    // Majorant modification to compensate for the zero volume event candidate case
     majorantScale = 1.0f;
     volumeRatioZeroCandidateCompensation = volScatterProb;
     if (guideScatterDecision) {
@@ -217,6 +220,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u
                 PBRT_DBG("t < seg->tMax\n");
                 T_maj *= FastExp(-(t - tMin) * seg->sigma_maj);
                 MediumProperties mp = medium->SamplePoint(ray(t), lambda);
+                // The function callback always return true, hence the process is never terminated inside the volume
                 if (!callback(ray(t), mp, seg->sigma_maj, T_maj)) {
                     // Returning out of doubly-nested while loop is not as good perf. wise
                     // on the GPU vs using "done" here.
@@ -257,6 +261,10 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
     return ray.medium.Dispatch(sample);
 }
 
+// The volume grid traversal logic for the delta tracking routine
+// Modify the original SampleT_maj to support distance sampling with a different (scaled) PDF
+// SampleT_maj sequentially samples each ray segment divided by the grids--if sample pass one segment, start a new sampling step at the next segment
+// SampleT_maj_OpticalDepthSpace treats the ray as a whole in the optical depth space--as described by Fig. 3 in the NDS paper (https://www.jcgt.org/published/0007/03/03/paper.pdf)
 template <typename ConcreteMedium, typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, Float u, RNG &rng,
                                                     const SampledWavelengths &lambda,
@@ -308,8 +316,10 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
 
     Float OneMinusENegTv = 1.f - FastExp(-t_v);
     Float t_n=-1.f, t_n_current=-1.f;
+
+    // NDS
     if (VilleminMethod) {
-        // Dose not support "decreasing" vsp (compared to 1 - majorant transmittance)
+        // Dose not support "decreasing" VSP (compared to 1 - majorant transmittance)
         if (vsp < 1 - FastExp(-t_v))
             return SampleT_maj(ray, tMax, u, rng, lambda, callback);
         else {
@@ -388,6 +398,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
             Float dist = std::numeric_limits<Float>::max();
             SampledSpectrum tpScaleFactorSingleStep;
             if (VilleminMethod) {
+                // NDS
                 tpScaleFactorSingleStep = 1.0f - FastExp(-t_n_current * normalizedMaj);
                 if (!deltaTracking)
                     dist = -std::log(1.0 - u * tpScaleFactorSingleStep[channelIdx]);
