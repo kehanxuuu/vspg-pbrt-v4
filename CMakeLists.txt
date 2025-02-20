@@ -116,7 +116,7 @@ endif()
 
 ###########################################################################
 # Enable RGB mode
-option(PBRT_WITH_RGB "Enable RGB rendering in favor of spectral rendering." OFF)
+option(PBRT_WITH_RGB "Enable RGB rendering in favor of spectral rendering." ON)
 
 if(PBRT_WITH_RGB)
   list (APPEND PBRT_DEFINITIONS "PBRT_RGB_RENDERING")
