@@ -4687,7 +4687,9 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
         Float v = sampler.Get1D();
         gbsdf.init(&bsdf, ray, si, v);
         if(guideRR && guideSurfaceRR) {
+#ifdef OPENPGL_RADIANCE_CACHES
             adjointEstimate = gbsdf.OutgoingRadiance(-ray.d);
+#endif
         }
 
         if (guideRR && depth > minRRDepth) {
