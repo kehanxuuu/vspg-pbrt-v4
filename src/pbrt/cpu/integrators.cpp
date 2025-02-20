@@ -3907,7 +3907,7 @@ SampledSpectrum GuidedPathIntegrator::Li(Point2i pPixel, RayDifferential ray, Sa
     SampledSpectrum adjointEstimate(0.f);
     bool guideRR = false;
     if (guideSettings.guideRR && imageSpaceGuidingBufferReady) {
-        openpgl::cpp::Vector3f pgPixelContributionEstimate = imageSpaceGuidingBuffer->GetPixelContributionEstimate(openpgl::cpp::Point2i(pPixel[0], pPixel[1]));
+        openpgl::cpp::Vector3f pgPixelContributionEstimate = imageSpaceGuidingBuffer->GetContributionEstimate(openpgl::cpp::Point2i(pPixel[0], pPixel[1]));
         pixelContributionEstimate[0] = pgPixelContributionEstimate.x;
         pixelContributionEstimate[1] = pgPixelContributionEstimate.y;
         pixelContributionEstimate[2] = pgPixelContributionEstimate.z;
@@ -4353,7 +4353,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
     const bool guideSurfaceRR = guideSettings.guideSurfaceRR;
     const bool guideVolumeRR = guideSettings.guideVolumeRR;
     if (guideSettings.guideRR && imageSpaceGuidingBufferReady) {
-        openpgl::cpp::Vector3f pgPixelContributionEstimate = imageSpaceGuidingBuffer->GetPixelContributionEstimate(openpgl::cpp::Point2i(pPixel[0], pPixel[1]));
+        openpgl::cpp::Vector3f pgPixelContributionEstimate = imageSpaceGuidingBuffer->GetContributionEstimate(openpgl::cpp::Point2i(pPixel[0], pPixel[1]));
         pixelContributionEstimate[0] = pgPixelContributionEstimate.x;
         pixelContributionEstimate[1] = pgPixelContributionEstimate.y;
         pixelContributionEstimate[2] = pgPixelContributionEstimate.z;
@@ -4488,7 +4488,7 @@ SampledSpectrum GuidedVolPathIntegrator::Li(Point2i pPixel, RayDifferential ray,
                             gphase.init(&intr.phase, p, ray.d, v);
                             if(guideRR && guideVolumeRR) {
 #ifdef OPENPGL_RADIANCE_CACHES
-                                adjointEstimate = gphase.InscatteredRadiance(-ray.d);
+                                adjointEstimate = gphase.InscatteredRadiance(-ray.d, true);
 #endif
                             }
 
