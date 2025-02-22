@@ -88,7 +88,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t vspsecondaryguiding = " << guideSettings.guideSecondaryVSP << std::endl;
     std::cout<< "\t vspmisratio = " << guideSettings.vspMISRatio << std::endl;
     std::cout<< "\t vspcriterion = " << (guideSettings.vspCriterion == EContribution ? "Contribution" : "Variance") << std::endl;
-    std::cout<< "\t vspsamplingmethod = " << (guideSettings.guideVSPSamplingMethod == EResampling ? "Resampling" : "Villemin") << std::endl;
+    std::cout<< "\t vspsamplingmethod = " << (guideSettings.guideVSPSamplingMethod == EResampling ? "Resampling" : "NDS") << std::endl;
     std::cout<< "\t collisionProbabilityBias = " << guideSettings.collisionProbabilityBias << std::endl << std::endl;
 
     std::cout<< "\t storeISGBuffer = " << guideSettings.storeISGBuffer << std::endl;
@@ -187,7 +187,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
         }
     }
 
-    if (!trBufferLoad && (guideSettings.storeTrBuffer || (guideSettings.guideVSP && guideSettings.guidePrimaryVSP && guideSettings.guideVSPSamplingMethod ==  EVillemin && guideSettings.collisionProbabilityBias))) {
+    if (!trBufferLoad && (guideSettings.storeTrBuffer || (guideSettings.guideVSP && guideSettings.guidePrimaryVSP && guideSettings.guideVSPSamplingMethod == ENDS && guideSettings.collisionProbabilityBias))) {
         calculateTrBuffer = true;
         trBuffer = new TrBuffer(resolution);
     }
@@ -880,7 +880,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
         SampledSpectrum beta_factor(1.f), r_u_factor(1.f);
         SampledSpectrum T_maj = SampleT_maj_OpticalDepthSpace(ray, tMax, sampler.Get1D(), rng, lambda,
                                                               guideScatterDecision, vsp, guideSettings.vspMISRatio,
-                                                              guideSettings.guideVSPSamplingMethod == EVillemin,
+                                                              guideSettings.guideVSPSamplingMethod == ENDS,
                                                               beta_factor, r_u_factor,
                                             [&](Point3f p, MediumProperties mp, SampledSpectrum sigma_maj, SampledSpectrum T_maj, bool activateNDS=false) {
                     ++ densityQueryCountPerSegment;
@@ -926,10 +926,10 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     SampledSpectrum albedo = mp.sigma_s / sigma_t;
                     Float pScatter = sigma_t[channelIdx] / sigma_maj[channelIdx];
 
-                    bool VilleminCollisionProbabilityBias = false;
-                    if (depth == 0 && guideSettings.guideVSPSamplingMethod == EVillemin && guideSettings.collisionProbabilityBias && trBufferLoad && activateNDS) {
+                    bool NDS_plus = false;
+                    if (depth == 0 && guideSettings.guideVSPSamplingMethod == ENDS && guideSettings.collisionProbabilityBias && trBufferLoad && activateNDS) {
                         // NDS+: adjust the real/null-collision probability
-                        VilleminCollisionProbabilityBias = true;
+                        NDS_plus = true;
                         // Requires pre-computed transmittance estimate
                         // Therefore only enabled for the primary ray
                         Float trEstCache = trBuffer->GetTransmittance(pPixel)[channelIdx];
@@ -972,7 +972,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                         Float pdf = T_maj[channelIdx] * sigma_t[channelIdx];
                         beta *= T_maj * mp.sigma_s / pdf;
                         r_u *= T_maj * sigma_t / pdf;
-                        if (VilleminCollisionProbabilityBias)
+                        if (NDS_plus)
                             r_u *= sigma_maj * pScatter / sigma_t;
 #endif
                         transmittanceWeight *= (T_maj * mp.sigma_s) / pdf;
@@ -1070,7 +1070,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                             transmittanceWeight = SampledSpectrum(0.f);
                         }
                         r_u *= T_maj * sigma_n / pdf;
-                        if (VilleminCollisionProbabilityBias)
+                        if (NDS_plus)
                             r_u *= sigma_maj * (1 - pScatter) / sigma_n;
                         r_l *= T_maj * sigma_maj / pdf;
                         return beta && r_u;
@@ -1293,8 +1293,8 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     std::string strVSPSamplingMethod = parameters.GetOneString("vspsamplingmethod", "resampling");
     if(strVSPSamplingMethod == "Resampling" || strVSPSamplingMethod == "resampling") {
         guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EResampling;
-    } else if (strVSPSamplingMethod == "Villemin" || strVSPSamplingMethod == "villemin") {
-        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::EVillemin;
+    } else if (strVSPSamplingMethod == "NDS" || strVSPSamplingMethod == "nds") {
+        guideSettings.guideVSPSamplingMethod = VSPSamplingMethodType::ENDS;
     }
 
     guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);

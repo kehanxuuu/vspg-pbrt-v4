@@ -24,7 +24,7 @@ Below is a list of guiding-related integrator parameters along with their descri
 * **vspprimaryguiding, vspsecondaryguiding**: bool, separately activate VSP guiding for primary/secondary rays.
 * **vspmisratio**: float, the (MIS) ratio for defensive sampling with delta tracking.
 * **vspcriterion**: string ("contribution" or "variance"), the criterion to determine the optimal VSP.
-* **vspsamplingmethod**: string ("resampling" or "villemin"), "resampling" is our proposed distance sampling algorithm, whereas "villemin" is the baseline for comparison and denoted as normalized distance sampling (NDS) in the paper.
+* **vspsamplingmethod**: string ("resampling" or "nds"), "resampling" is our proposed distance sampling algorithm, whereas "nds" (normalized distance sampling) is the baseline for comparison.
 * **collisionProbabilityBias**: bool, activate NDS+ when the distance sampling method is set to be NDS.
 
 ### Image space buffer parameters (for primary ray VSPG)

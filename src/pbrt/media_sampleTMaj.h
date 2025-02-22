@@ -250,13 +250,13 @@ template <typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, Float u, RNG &rng,
                                                            const SampledWavelengths &lambda,
                                                            bool guideScatterDecision, Float vsp, Float vspMISRatio,
-                                                           bool VilleminMethod,
+                                                           bool NDS,
                                                            SampledSpectrum &beta_factor,
                                                            SampledSpectrum &r_u_factor,
                                                            F callback) {
     auto sample = [&](auto medium) {
         using M = typename std::remove_reference_t<decltype(*medium)>;
-        return SampleT_maj_OpticalDepthSpace<M>(ray, tMax, u, rng, lambda, guideScatterDecision, vsp, vspMISRatio, VilleminMethod, beta_factor, r_u_factor, callback);
+        return SampleT_maj_OpticalDepthSpace<M>(ray, tMax, u, rng, lambda, guideScatterDecision, vsp, vspMISRatio, NDS, beta_factor, r_u_factor, callback);
     };
     return ray.medium.Dispatch(sample);
 }
@@ -269,14 +269,14 @@ template <typename ConcreteMedium, typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, Float u, RNG &rng,
                                                     const SampledWavelengths &lambda,
                                                     bool guideScatterDecision, Float vsp, Float vspMISRatio,
-                                                    bool VilleminMethod,
+                                                    bool NDS,
                                                     SampledSpectrum &beta_factor,
                                                     SampledSpectrum &r_u_factor,
                                                     F callback) {
     // Sample distance in optical depth space, ignore majorant grid bounds
 
-    // VilleminMethod = true: can enable or disable collProbBias
-    // VilleminMethod = false: our method, default with collision probability biasing
+    // NDS = true: can enable or disable collProbBias
+    // NDS = false: our method, default with collision probability biasing
     //      If homogeneous volume -> stop at the first bounce and automatically get the analytical solution
 
     int channelIdx = lambda.ChannelIdx();
@@ -318,7 +318,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
     Float t_n=-1.f, t_n_current=-1.f;
 
     // NDS
-    if (VilleminMethod) {
+    if (NDS) {
         // Dose not support "decreasing" VSP (compared to 1 - majorant transmittance)
         if (vsp < 1 - FastExp(-t_v))
             return SampleT_maj(ray, tMax, u, rng, lambda, callback);
@@ -332,7 +332,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
     Float t_v_current = t_v;
     Float remainingDist = 0;
 
-    bool deltaTracking = false;
+    bool deltaTracking = !NDS;
     if (u > vspMISRatio) {
         deltaTracking = true;
         u = (u - vspMISRatio) / (1 - vspMISRatio);
@@ -396,39 +396,26 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
             count ++;
             // Try to generate sample along current majorant segment
             Float dist = std::numeric_limits<Float>::max();
-            SampledSpectrum tpScaleFactorSingleStep;
-            if (VilleminMethod) {
+            SampledSpectrum tpScaleFactorSingleStep = 1.f;
+            if (NDS) {
                 // NDS
                 tpScaleFactorSingleStep = 1.0f - FastExp(-t_n_current * normalizedMaj);
                 if (!deltaTracking)
                     dist = -std::log(1.0 - u * tpScaleFactorSingleStep[channelIdx]);
             }
-            else {
-                tpScaleFactorSingleStep = (1.0f - FastExp(-t_v_current * normalizedMaj)) / vsp;
-                if (!deltaTracking) {
-                    if (u < vsp) {
-                        // Sample inside the volume
-                        dist = -std::log(1.0 - u * tpScaleFactorSingleStep[channelIdx]);
-                    }
-                    // Else sample on the surface
-                    // No need to set dist because it is already FLOAT_MAX (out of volume boundary)
-                }
-            }
 
             if (deltaTracking)
                 dist = -std::log(1.0 - u);
 
-            bool passThrough = t_v_current - dist < ScatterEpsilon || dist == 0;
-            if (VilleminMethod || !passThrough)
+            if (NDS)
                 tpScaleFactor *= tpScaleFactorSingleStep;
 
+            bool passThrough = t_v_current - dist < ScatterEpsilon || dist == 0;
             if (passThrough) {
-                if (VilleminMethod) {
+                if (NDS) {
                     tpScaleFactor /= 1.0f - FastExp(-t_n + t_v);
                 }
-                else {
-                    tpScaleFactor *= FastExp(-t_v_current * normalizedMaj) / (1 - vsp);
-                }
+
                 r_u_factor = SampledSpectrum(vspMISRatio) / tpScaleFactor + SampledSpectrum(1 - vspMISRatio);
                 overTheEnd = true;
                 T_maj *= FastExp(- (seg->tMax - tMin) * seg->sigma_maj);

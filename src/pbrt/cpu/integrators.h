@@ -483,7 +483,7 @@ public:
 
     enum VSPSamplingMethodType {
       EResampling,
-      EVillemin
+      ENDS
     };
 
     struct GuidingSettings {
