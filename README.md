@@ -13,30 +13,27 @@ For instructions on reproducing the experiments, please refer to the [scripts](h
 The *guidedvolpathintegrator* extends the built-in *volpathintegrator* with directional guiding and VSP guiding. The modified distance sampling logic is implemented in `GuidedVolPathVSPGIntegrator::SampleDistance`.
 
 Below is a list of guiding-related integrator parameters along with their descriptions and usage.
-```
-// Directional guiding parameters
-* surfaceguiding, volumeguiding: bool, activate surface/volume directional guiding.
-* surfaceguidingtype, volumeguidingtype: string ("mis" or "ris"), the strategy for defensive sampling with BSDF sampling.
-* storeGuidingCache, loadGuidingCache: bool, store/load the data structure for directional guiding.
-* guidingCacheFileName: string, name of the guiding cache to store/load.
+### Directional guiding parameters
+* **surfaceguiding, volumeguiding**: bool, activate surface/volume directional guiding.
+* **surfaceguidingtype, volumeguidingtype**: string ("mis" or "ris"), the strategy for defensive sampling with BSDF sampling.
+* **storeGuidingCache, loadGuidingCache**: bool, store/load the data structure for directional guiding.
+* **guidingCacheFileName**: string, name of the guiding cache to store/load.
 
-// VSP guiding parameters
-* vspguiding: bool, activate VSP guiding.
-* vspprimaryguiding, vspsecondaryguiding: bool, separately activate VSP guiding for primary/secondary rays.
-* vspmisratio: float, the (MIS) ratio for defensive sampling with delta tracking.
-* vspcriterion: string ("contribution" or "variance"), the criterion to determine the optimal VSP.
-* vspsamplingmethod: string ("resampling" or "villemin"), "resampling" is our proposed distance sampling algorithm, whereas "villemin" is the baseline for comparison and denoted as normalized distance sampling (NDS) in the paper.
-* collisionProbabilityBias: bool, activate NDS+ when the distance sampling method is set to be NDS.
+### VSP guiding parameters
+* **vspguiding**: bool, activate VSP guiding.
+* **vspprimaryguiding, vspsecondaryguiding**: bool, separately activate VSP guiding for primary/secondary rays.
+* **vspmisratio**: float, the (MIS) ratio for defensive sampling with delta tracking.
+* **vspcriterion**: string ("contribution" or "variance"), the criterion to determine the optimal VSP.
+* **vspsamplingmethod**: string ("resampling" or "villemin"), "resampling" is our proposed distance sampling algorithm, whereas "villemin" is the baseline for comparison and denoted as normalized distance sampling (NDS) in the paper.
+* **collisionProbabilityBias**: bool, activate NDS+ when the distance sampling method is set to be NDS.
 
-// Image space buffer parameters (for primary ray VSPG)
-* storeISGBuffer, loadISGBuffer: bool, store/load the image space buffer.
-* isgBufferFileName: string, name of the image space buffer to store/load.
+### Image space buffer parameters (for primary ray VSPG)
+* **storeISGBuffer, loadISGBuffer**: bool, store/load the image space buffer.
+* **isgBufferFileName**: string, name of the image space buffer to store/load.
 
-// Transmittance buffer parameters (for primary ray VSPG, used only in NDS+)
-* storeTrBuffer, loadTrBuffer: bool, store/load the transmittance for primary rays.
-* trBufferFileName: string, name of the transmittance buffer to store/load.
-
-```
+### Transmittance buffer parameters (for primary ray VSPG, used only in NDS+)
+* **storeTrBuffer, loadTrBuffer**: bool, store/load the transmittance for primary rays.
+* **trBufferFileName**: string, name of the transmittance buffer to store/load.
 
 Note that both directional guiding and secondary ray VSP guiding rely on the same spatial-directional data structure implemented in OpenPGL. As a result, the training procedure is activated if either of these two features is enabled.
 
