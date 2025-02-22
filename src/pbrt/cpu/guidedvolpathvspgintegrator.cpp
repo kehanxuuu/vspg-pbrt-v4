@@ -90,7 +90,6 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t vspcriterion = " << (guideSettings.vspCriterion == EContribution ? "Contribution" : "Variance") << std::endl;
     std::cout<< "\t vspsamplingmethod = " << (guideSettings.guideVSPSamplingMethod == EResampling ? "Resampling" : "Villemin") << std::endl;
     std::cout<< "\t collisionProbabilityBias = " << guideSettings.collisionProbabilityBias << std::endl << std::endl;
-    std::cout<< "\t productdistanceguiding = " << guideSettings.productDistanceGuiding << std::endl;
 
     std::cout<< "\t storeISGBuffer = " << guideSettings.storeISGBuffer << std::endl;
     std::cout<< "\t loadISGBuffer = " << guideSettings.loadISGBuffer << std::endl;
@@ -107,7 +106,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
     std::cout<< "\t lightSampleStrategy = " << lightSampleStrategy << std::endl;
     std::cout<< "\t regularize = " << regularize << std::endl;
 
-    guideTraining = guideSettings.guideSurface || guideSettings.guideVolume || guideSettings.guideSurfaceRR || guideSettings.guideVolumeRR || guideSettings.guideSecondaryVSP || guideSettings.productDistanceGuiding;
+    guideTraining = guideSettings.guideSurface || guideSettings.guideVolume || guideSettings.guideSurfaceRR || guideSettings.guideVolumeRR || guideSettings.guideSecondaryVSP;
 
     guiding_device = new openpgl::cpp::Device(PGL_DEVICE_TYPE_CPU_4);
     guiding_fieldConfig.Init(PGL_SPATIAL_STRUCTURE_KDTREE, PGL_DIRECTIONAL_DISTRIBUTION_PARALLAX_AWARE_VMM);
@@ -287,7 +286,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
 
     GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, guideSettings.guideSurface, guideSettings.guideSecondaryVSP, guideSettings.surfaceGuidingType);
     GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, guideSettings.guideVolume, guideSettings.guideSecondaryVSP, guideSettings.volumeGuidingType);
-    GuidedInscatteredRadiance ginscatteredradiance(guiding_field, volumeSamplingDistribution, guideSettings.productDistanceGuiding);
+    GuidedInscatteredRadiance ginscatteredradiance(guiding_field, volumeSamplingDistribution, false);
     float rr_correction = 1.0f;
     float misPDF = 1.0f;
 
@@ -696,12 +695,6 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     SampledSpectrum sigma_n = ClampZero(sigma_maj - sigma_t);
                     Float wi = (sigma_t / sigma_maj * trRatioEst)[channelIdx];
                     Float sigmaTTrEstScalar = wi;
-                    if (guideScatterDecision && guideSettings.productDistanceGuiding && sigma_t[channelIdx] > 0) {
-                        ginscatteredradiance.init(p);
-                        Float L_is = (mp.sigma_s / sigma_t * ginscatteredradiance.InscatteredRadiance(-ray.d, lambda))[channelIdx];
-                        if (L_is > 0)
-                            wi *= L_is;
-                    }
 
                     if (wi > 0) {
                         weightSum += wi;
@@ -1305,7 +1298,6 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
     }
 
     guideSettings.collisionProbabilityBias = parameters.GetOneBool("collisionProbabilityBias", false);
-    guideSettings.productDistanceGuiding = parameters.GetOneBool("productdistanceguiding", false);
 
 
     // Image space buffer parameters (for primary ray VSPG)

@@ -520,7 +520,6 @@ public:
 
         float vspMISRatio {0.5f};
         VSPCriterion vspCriterion {EContribution};
-        bool productDistanceGuiding {false};
         bool collisionProbabilityBias {false};
     };
 
