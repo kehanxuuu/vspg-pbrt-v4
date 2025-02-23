@@ -132,6 +132,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u
 
 // The volume grid traversal logic for the resampling routine
 // Always continue the distance sampling process until sampling pass the volume
+// Used for VSP guiding for heterogeneous medium
 template <typename ConcreteMedium, typename F>
 PBRT_CPU_GPU SampledSpectrum SampleT_maj_Resampling(Ray ray, Float tMax, Float u, RNG &rng,
                                                     const SampledWavelengths &lambda,
@@ -275,12 +276,14 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
                                                     F callback) {
     // Sample distance in optical depth space, ignore majorant grid bounds
 
-    // NDS = true: can enable or disable collProbBias
-    // NDS = false: our method, default with collision probability biasing
-    //      If homogeneous volume -> stop at the first bounce and automatically get the analytical solution
+    // NDS = true: for NDS and NDS+
+    // NDS = false: for delta tracking (guideScatterDecision = false) and analytical VSP guiding for homogeneous medium (guideScatterDecision = true)
+
+    // Note: the code works for both homoegeneous and heterogeneous medium, and only takes one bounce in the homogeneous case
 
     int channelIdx = lambda.ChannelIdx();
     
+    // Fallback to the built-in delta tracking logic
     if (!guideScatterDecision || vspMISRatio == 0.f)
         return SampleT_maj(ray, tMax, u, rng, lambda, callback);
 
@@ -332,7 +335,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
     Float t_v_current = t_v;
     Float remainingDist = 0;
 
-    bool deltaTracking = !NDS;
+    bool deltaTracking = false;
     if (u > vspMISRatio) {
         deltaTracking = true;
         u = (u - vspMISRatio) / (1 - vspMISRatio);
@@ -396,26 +399,39 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
             count ++;
             // Try to generate sample along current majorant segment
             Float dist = std::numeric_limits<Float>::max();
-            SampledSpectrum tpScaleFactorSingleStep = SampledSpectrum(1.f);
+            SampledSpectrum tpScaleFactorSingleStep;
             if (NDS) {
                 // NDS
                 tpScaleFactorSingleStep = 1.0f - FastExp(-t_n_current * normalizedMaj);
                 if (!deltaTracking)
                     dist = -std::log(1.0 - u * tpScaleFactorSingleStep[channelIdx]);
             }
+            else {
+                tpScaleFactorSingleStep = (1.0f - FastExp(-t_v_current * normalizedMaj)) / vsp;
+                if (!deltaTracking) {
+                    if (u < vsp) {
+                        // Sample inside the volume
+                        dist = -std::log(1.0 - u * tpScaleFactorSingleStep[channelIdx]);
+                    }
+                    // Else sample on the surface
+                    // No need to set dist because it is already FLOAT_MAX (out of volume boundary)
+                }
+            }
 
             if (deltaTracking)
                 dist = -std::log(1.0 - u);
 
-            if (NDS)
+            bool passThrough = t_v_current - dist < ScatterEpsilon || dist == 0;
+            if (NDS || !passThrough)
                 tpScaleFactor *= tpScaleFactorSingleStep;
 
-            bool passThrough = t_v_current - dist < ScatterEpsilon || dist == 0;
             if (passThrough) {
                 if (NDS) {
                     tpScaleFactor /= 1.0f - FastExp(-t_n + t_v);
                 }
-
+                else {
+                    tpScaleFactor *= FastExp(-t_v_current * normalizedMaj) / (1 - vsp);
+                }
                 r_u_factor = SampledSpectrum(vspMISRatio) / tpScaleFactor + SampledSpectrum(1 - vspMISRatio);
                 overTheEnd = true;
                 T_maj *= FastExp(- (seg->tMax - tMin) * seg->sigma_maj);
