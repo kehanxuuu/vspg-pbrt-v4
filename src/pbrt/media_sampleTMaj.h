@@ -396,7 +396,7 @@ PBRT_CPU_GPU SampledSpectrum SampleT_maj_OpticalDepthSpace(Ray ray, Float tMax, 
             count ++;
             // Try to generate sample along current majorant segment
             Float dist = std::numeric_limits<Float>::max();
-            SampledSpectrum tpScaleFactorSingleStep = 1.f;
+            SampledSpectrum tpScaleFactorSingleStep = SampledSpectrum(1.f);
             if (NDS) {
                 // NDS
                 tpScaleFactorSingleStep = 1.0f - FastExp(-t_n_current * normalizedMaj);
