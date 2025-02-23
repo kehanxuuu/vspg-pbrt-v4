@@ -1266,8 +1266,8 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
 
     // Directional guiding parameters
     GuidingSettings guideSettings;
-    guideSettings.guideSurface = parameters.GetOneBool("surfaceguiding", false);
-    guideSettings.guideVolume = parameters.GetOneBool("volumeguiding", false);
+    guideSettings.guideSurface = parameters.GetOneBool("surfaceguiding", true);
+    guideSettings.guideVolume = parameters.GetOneBool("volumeguiding", true);
     std::string strSurfaceGuidingType = parameters.GetOneString("surfaceguidingtype", "ris");
     guideSettings.surfaceGuidingType = strSurfaceGuidingType == "mis" ? EGuideMIS : EGuideRIS;
     std::string strVolumeGuidingType = parameters.GetOneString("volumeguidingtype", "mis");
@@ -1278,12 +1278,12 @@ std::unique_ptr<GuidedVolPathVSPGIntegrator> GuidedVolPathVSPGIntegrator::Create
 
 
     // VSP guiding parameters
-    guideSettings.guideVSP = parameters.GetOneBool("vspguiding", false);
+    guideSettings.guideVSP = parameters.GetOneBool("vspguiding", true);
     guideSettings.guidePrimaryVSP = parameters.GetOneBool("vspprimaryguiding", true);
     guideSettings.guideSecondaryVSP = parameters.GetOneBool("vspsecondaryguiding", true);
     guideSettings.vspMISRatio = parameters.GetOneFloat("vspmisratio", 0.5f);
 
-    std::string strVSPCreterion = parameters.GetOneString("vspcriterion", "Contribution");
+    std::string strVSPCreterion = parameters.GetOneString("vspcriterion", "variance");
     if(strVSPCreterion == "Contribution" || strVSPCreterion == "contribution") {
         guideSettings.vspCriterion = VSPCriterion::EContribution;
     } else if (strVSPCreterion == "Variance" || strVSPCreterion == "variance") {
