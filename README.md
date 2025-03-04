@@ -1,5 +1,5 @@
 # Renderer code for the paper "Volume Scattering Probability Guiding"
-### [Project Page](https://kehanxuuu.github.io/vspg-website/) | [Paper](https://kehanxuuu.github.io/vspg-website/static/pdfs/volume_scattering_probability_guiding_sa24.pdf) | [Scripts](https://github.com/kehanxuuu/vspg-rendering-scripts/) | [Scenes](https://drive.google.com/file/d/11mECG390H3CFszWaNu2i9QC87CDdTJAh/view?usp=sharing)
+### [Project Page](https://kehanxuuu.github.io/vspg-website/) | [Paper](https://kehanxuuu.github.io/vspg-website/static/pdfs/volume_scattering_probability_guiding_sa24.pdf) | [Scripts](https://github.com/kehanxuuu/vspg-rendering-scripts/) | [Scenes](https://drive.google.com/file/d/1vwbKCk770Pb2O0915yrZNGMsbE0K4qpY/view?usp=sharing)
 
 <img src="teaser.jpg" alt="teaser" width="1024"/>
 
