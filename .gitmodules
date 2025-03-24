@@ -37,7 +37,7 @@
 	url = https://github.com/glfw/glfw.git
 [submodule "src/ext/openpgl"]
 	path = src/ext/openpgl
-	url = git@github.com:RenderKit/openpgl.git
+	url = https://github.com/RenderKit/openpgl.git
 	branch = wip/volume-scatter-probability-guiding
 [submodule "src/ext/oidn"]
 	path = src/ext/oidn
