@@ -25,6 +25,7 @@
 #include <pbrt/util/noise.cpp>
 #include <pbrt/util/spectrum.cpp>
 #include <pbrt/util/transform.cpp>
+#include <pbrt/util/math.cpp>
 
 #include <optix_device.h>
 
