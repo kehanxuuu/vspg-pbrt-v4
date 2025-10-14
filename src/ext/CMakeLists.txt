@@ -258,14 +258,14 @@ if (PBRT_WITH_PATH_GUIDING)
     message (STATUS "Found OpenPGL version ${OPENPGL_VERSION}")
   else ()
     message (STATUS "OpenPGL not found; building it from scratch.")
-
+    set(WITH_SPACE_GUIDING_BUFFER ${PBRT_WITH_OIDN})
     set(OPENPGL_ARGS ${OPENPGL_ARGS}
       -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_INSTALL_PREFIX}
       -DCMAKE_PREFIX_PATH:PATH=${CMAKE_PREFIX_PATH}
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DOPENPGL_BUILD_STATIC=OFF
       -DOPENPGL_TBB_ROOT=${CMAKE_INSTALL_PREFIX}
-      -DOPENPGL_EF_IMAGE_SPACE_GUIDING_BUFFER=ON
+      -DOPENPGL_EF_IMAGE_SPACE_GUIDING_BUFFER=${WITH_SPACE_GUIDING_BUFFER}
       -DOPENPGL_EF_VSP_GUIDING=ON
       -DOPENPGL_EF_RADIANCE_CACHES=OFF
       -DOPENPGL_DIRECTION_COMPRESSION=OFF
@@ -279,12 +279,11 @@ if (PBRT_WITH_PATH_GUIDING)
         ${OPENPGL_ARGS}
       BUILD_ALWAYS ON
     )
-
-    ExternalProject_Add_StepDependencies(OpenPGL
-    configure
-      TBB
-      OIDN
-    )
+    if(PBRT_WITH_OIDN)
+      ExternalProject_Add_StepDependencies(OpenPGL configure TBB OIDN)
+    else()
+      ExternalProject_Add_StepDependencies(OpenPGL configure TBB)
+    endif()
 
     #set(BUILD_STATIC ON CACHE BOOL "" FORCE)
     #add_subdirectory (openpgl/superbuild)
