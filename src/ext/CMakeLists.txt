@@ -258,7 +258,10 @@ if (PBRT_WITH_PATH_GUIDING)
     message (STATUS "Found OpenPGL version ${OPENPGL_VERSION}")
   else ()
     message (STATUS "OpenPGL not found; building it from scratch.")
-    set(WITH_SPACE_GUIDING_BUFFER ${PBRT_WITH_OIDN})
+    set(WITH_SPACE_GUIDING_BUFFER OFF)
+    if (${PBRT_WITH_OIDN})
+      set(WITH_SPACE_GUIDING_BUFFER ON)
+    endif()
     set(OPENPGL_ARGS ${OPENPGL_ARGS}
       -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_INSTALL_PREFIX}
       -DCMAKE_PREFIX_PATH:PATH=${CMAKE_PREFIX_PATH}
