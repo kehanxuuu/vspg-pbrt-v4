@@ -320,12 +320,13 @@ class GuidedPathIntegrator : public RayIntegrator {
     openpgl::cpp::Field* guiding_field {nullptr};
     openpgl::cpp::Device* guiding_device {nullptr};
     //ThreadLocal<Allocator> threadPathSegmentStorage;
-
+#if defined(PBRT_WITH_OIDN)
     openpgl::cpp::util::ImageSpaceGuidingBuffer* imageSpaceGuidingBuffer;
 
     bool imageSpaceGuidingBufferReady {false};
     bool calculateImageSpaceGuidingBuffer {false};
     int imageSpaceGuidingBufferUpdateWave {0};
+#endif
     int waveCounter {0};
 };
 #endif
@@ -464,12 +465,12 @@ class GuidedVolPathIntegrator : public RayIntegrator {
     openpgl::cpp::SampleStorage* guiding_sampleStorage {nullptr};
     openpgl::cpp::Field* guiding_field {nullptr};
     openpgl::cpp::Device* guiding_device {nullptr};
-
+#if defined(PBRT_WITH_OIDN)
     openpgl::cpp::util::ImageSpaceGuidingBuffer* imageSpaceGuidingBuffer{nullptr};
-
     bool imageSpaceGuidingBufferReady {false};
     bool calculateImageSpaceGuidingBuffer {false};
     int imageSpaceGuidingBufferUpdateWave {0};
+#endif
     int waveCounter {0};
 };
 
@@ -565,6 +566,7 @@ public:
 
 private:
     // GuidedVolPathVSPGIntegrator Private Methods
+#if defined(PBRT_WITH_OIDN)
     void SampleDistance(Point2i pPixel, RayDifferential &ray, Float tMax,
                         SampledWavelengths &lambda, Sampler &sampler, RNG &rng,
                         bool &scattered, bool &terminated, int &depth,
@@ -580,7 +582,21 @@ private:
                         openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &isgbSample,
                         bool guideRR, bool guideVolumeRR,
                         SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const;
-
+#else
+  void SampleDistance(Point2i pPixel, RayDifferential &ray, Float tMax,
+                      SampledWavelengths &lambda, Sampler &sampler, RNG &rng,
+                      bool &scattered, bool &terminated, int &depth, SampledSpectrum &L,
+                      SampledSpectrum &beta, SampledSpectrum &r_u, SampledSpectrum &r_l,
+                      bool &specularBounce, bool &anyNonSpecularBounces,
+                      LightSampleContext &prevIntrContext, bool &lastVertexVolume,
+                      openpgl::cpp::PathSegmentStorage *pathSegmentStorage,
+                      openpgl::cpp::PathSegment **pathSegmentDataPointer,
+                      const GuidedBSDF &gbsdf, GuidedPhaseFunction &gphase,
+                      GuidedInscatteredRadiance ginscatteredradiance, float rr_correction,
+                      SampledSpectrum &transmittanceWeight,
+                      bool guideRR, bool guideVolumeRR, SampledSpectrum &adjointEstimate,
+                      SampledSpectrum &pixelContributionEstimate) const;
+#endif
     inline Float GetPrimaryRayVolumeScatterProbability(const Point2i &pPixel, bool &scatterPrimary) const;
 
     inline Float GetSecondaryRayVolumeScatterProbability(const GuidedPhaseFunction &gphase, Vector3f wi, bool &scatterSecondary) const;
@@ -619,12 +635,11 @@ private:
     TrBuffer* trBuffer {nullptr};
     bool trBufferLoad {false};
     bool calculateTrBuffer {false};
-
+#if defined(PBRT_WITH_OIDN)
     openpgl::cpp::util::ImageSpaceGuidingBuffer* imageSpaceGuidingBuffer{nullptr};
-
     bool imageSpaceGuidingBufferReady {false};
     bool calculateImageSpaceGuidingBuffer {false};
-
+#endif
     int bufferWave {0};
     int waveCounter {0};
 };

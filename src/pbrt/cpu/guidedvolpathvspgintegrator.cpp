@@ -147,7 +147,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
 
     Vector2i resolution = camera.GetFilm().PixelBounds().Diagonal();
     sensor = camera.GetFilm().GetPixelSensor();
-
+#if defined(PBRT_WITH_OIDN)
     if (guideSettings.loadISGBuffer) {
         if (FileExists(guideSettings.isgBufferFileName)) {
             imageSpaceGuidingBuffer = new openpgl::cpp::util::ImageSpaceGuidingBuffer(guideSettings.isgBufferFileName);
@@ -176,7 +176,7 @@ GuidedVolPathVSPGIntegrator::GuidedVolPathVSPGIntegrator(int maxDepth, int minRR
         }
         imageSpaceGuidingBuffer = new openpgl::cpp::util::ImageSpaceGuidingBuffer(cfg);
     }
-
+#endif
     if (guideSettings.loadTrBuffer) {
         if (FileExists(guideSettings.trBufferFileName)) {
             trBuffer = new TrBuffer(guideSettings.trBufferFileName);
@@ -211,11 +211,11 @@ GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
         std::cout << "GuidedVolPathVSPGIntegrator storing guiding cache = " << guideSettings.guidingCacheFileName << std::endl;
         guiding_field->Store(guideSettings.guidingCacheFileName);
     }
-
+#if defined(PBRT_WITH_OIDN)
     if (guideSettings.storeISGBuffer){
         imageSpaceGuidingBuffer->Store(guideSettings.isgBufferFileName);
     }
-
+#endif
     if (guideSettings.storeTrBuffer){
         trBuffer->Store(guideSettings.trBufferFileName);
     }
@@ -223,7 +223,9 @@ GuidedVolPathVSPGIntegrator::~GuidedVolPathVSPGIntegrator() {
     delete guiding_device;
     delete guiding_sampleStorage;
     delete guiding_field;
+#if defined(PBRT_WITH_OIDN)
     delete imageSpaceGuidingBuffer;
+#endif
     delete trBuffer;
 }
 
@@ -248,13 +250,14 @@ void GuidedVolPathVSPGIntegrator::PostProcessWave() {
     guiding_sampleStorage->Clear();
 
     if (waveCounter == std::pow(2.0f, bufferWave)) {
+#if defined(PBRT_WITH_OIDN)
         if (calculateImageSpaceGuidingBuffer) {
             Timer isgBufferTimer;
             imageSpaceGuidingBuffer->Update();
             isgBufferUpdateTime += isgBufferTimer.ElapsedSeconds();
             imageSpaceGuidingBufferReady = true;
         }
-
+#endif
         bufferWave++;
     }
 }
@@ -268,14 +271,15 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
     openpgl::cpp::VolumeSamplingDistribution* volumeSamplingDistribution = guiding_threadVolumeSamplingDistribution->Get();
 
     openpgl::cpp::PathSegment* pathSegmentData = nullptr;
-
+#if defined(PBRT_WITH_OIDN)
     openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample isgbSample;
-
+#endif
     SampledSpectrum pixelContributionEstimate(1.f);
     SampledSpectrum adjointEstimate(1.f);
     bool guideRR = false;
     const bool guideSurfaceRR = guideSettings.guideSurfaceRR;
     const bool guideVolumeRR = guideSettings.guideVolumeRR;
+#if defined(PBRT_WITH_OIDN)
     if (guideSettings.guideRR && imageSpaceGuidingBufferReady) {
         openpgl::cpp::Vector3f pgPixelContributionEstimate = imageSpaceGuidingBuffer->GetContributionEstimate(openpgl::cpp::Point2i(pPixel[0], pPixel[1]));
         pixelContributionEstimate[0] = pgPixelContributionEstimate.x;
@@ -283,7 +287,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         pixelContributionEstimate[2] = pgPixelContributionEstimate.z;
         guideRR = true;
     }
-
+#endif
     GuidedBSDF gbsdf(&sampler, guiding_field, surfaceSamplingDistribution, guideSettings.guideSurface, guideSettings.guideSecondaryVSP, guideSettings.surfaceGuidingType);
     GuidedPhaseFunction gphase(&sampler, guiding_field, volumeSamplingDistribution, guideSettings.guideVolume, guideSettings.guideSecondaryVSP, guideSettings.volumeGuidingType);
     GuidedInscatteredRadiance ginscatteredradiance(guiding_field, volumeSamplingDistribution, false);
@@ -327,6 +331,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
             // The pointer pathSegmentData is updated in SampleDistance, and we want the updated pointer address
             // Therefore we need to pass a pointer to pathSegmentData (i.e., a double pointer)
             openpgl::cpp::PathSegment** pathSegmentDataPointer = &pathSegmentData;
+#if defined(PBRT_WITH_OIDN)
             SampleDistance(pPixel, ray, tMax, lambda, sampler, rng,
                            scattered, terminated, depth,
                            L, beta, r_u, r_l,
@@ -337,6 +342,15 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
                            transmittanceWeight,
                            isgbSample, guideRR, guideVolumeRR,
                            adjointEstimate, pixelContributionEstimate);
+#else
+            SampleDistance(pPixel, ray, tMax, lambda, sampler, rng, scattered, terminated,
+                           depth, L, beta, r_u, r_l, specularBounce,
+                           anyNonSpecularBounces, prevIntrContext, lastVertexVolume,
+                           pathSegmentStorage, pathSegmentDataPointer, gbsdf, gphase,
+                           ginscatteredradiance, rr_correction, transmittanceWeight,
+                           guideRR, guideVolumeRR, adjointEstimate,
+                           pixelContributionEstimate);
+#endif
             pathSegmentData = *pathSegmentDataPointer;
 
             // Handle terminated, scattered, and unscattered medium rays
@@ -413,7 +427,11 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         add_direct_contribution = false;
 
         // Initialize _visibleSurf_ at first intersection
+#if defined(PBRT_WITH_OIDN)
         if (depth == 0 && (visibleSurf || calculateImageSpaceGuidingBuffer)) {
+#else
+        if (depth == 0 && (visibleSurf)) {
+#endif
             // Estimate BSDF's albedo
             // Define sample arrays _ucRho_ and _uRho_ for reflectance estimate
             constexpr int nRhoSamples = 16;
@@ -435,11 +453,12 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
 
             if (visibleSurf)
                 *visibleSurf = VisibleSurface(isect, albedo, lambda);
-
+#if defined(PBRT_WITH_OIDN)
             RGB rgbAlbedo = albedo.ToRGB(lambda, *colorSpace);
             isgbSample.albedo = {rgbAlbedo[0], rgbAlbedo[1], rgbAlbedo[2]};
             isgbSample.normal = {isect.n[0], isect.n[1], isect.n[2]};
             isgbSample.SetSurfaceEvent(true);
+#endif
         }
 
         // Terminate path if maximum depth reached
@@ -609,7 +628,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
     }
 
     pathLength << depth;
-
+#if defined(PBRT_WITH_OIDN)
     if(calculateImageSpaceGuidingBuffer)
     {
 #if defined(PBRT_RGB_RENDERING)
@@ -620,7 +639,7 @@ SampledSpectrum GuidedVolPathVSPGIntegrator::Li(Point2i pPixel, RayDifferential 
         isgbSample.contribution = {colorRGB[0], colorRGB[1], colorRGB[2]};
         imageSpaceGuidingBuffer->AddSample({pPixel[0], pPixel[1]}, isgbSample);
     }
-
+#endif
     if (guideTraining)
     {
         //pathSegmentStorage->ValidateSegments();
@@ -646,7 +665,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                                                  GuidedInscatteredRadiance ginscatteredradiance,
                                                  float rr_correction,
                                                  SampledSpectrum &transmittanceWeight,
-                                                 openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &isgbSample,
+                                                 //openpgl::cpp::util::ImageSpaceGuidingBuffer::Sample &isgbSample,
                                                  bool guideRR, bool guideVolumeRR,
                                                  SampledSpectrum &adjointEstimate, SampledSpectrum &pixelContributionEstimate) const {
     int channelIdx = lambda.ChannelIdx();
@@ -773,7 +792,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
             // Select the volume event = continue scattering inside the volume
             Point3f p = selectedCandidate.p;
             MediumProperties mp = selectedCandidate.mp;
-
+#if defined(PBRT_WITH_OIDN)
             if (depth == 0) {
                 SampledSpectrum albedo = mp.sigma_s / (mp.sigma_s + mp.sigma_a);
                 RGB rgbAlbedo = albedo.ToRGB(lambda, *colorSpace);
@@ -781,7 +800,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                 isgbSample.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
                 isgbSample.SetSurfaceEvent(false);
             }
-
+#endif
             if (depth++ >= maxDepth) {
                 terminated = true;
                 return;
@@ -946,7 +965,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                     int mode = SampleDiscrete({pScatter, pNull}, um);
                     if (mode == 0) {
 #endif
-
+#if defined(PBRT_WITH_OIDN)
                         if (depth == 0) {
                             SampledSpectrum albedo = mp.sigma_s / (mp.sigma_s + mp.sigma_a);
 
@@ -955,7 +974,7 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
                             isgbSample.normal = {-ray.d[0], -ray.d[1], -ray.d[1]};
                             isgbSample.SetSurfaceEvent(false);
                         }
-
+#endif
                         // Handle scattering along ray path
                         // Stop path sampling if maximum depth has been reached
                         if (depth++ >= maxDepth) {
@@ -1089,7 +1108,6 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
             r_l *= r_u_factor;
             transmittanceWeight *= beta_factor / r_u_factor[channelIdx];
         }
-
         densityQueryCount << densityQueryCountPerSegment;
     }
     return;
@@ -1098,11 +1116,15 @@ void GuidedVolPathVSPGIntegrator::SampleDistance(Point2i pPixel, RayDifferential
 inline Float GuidedVolPathVSPGIntegrator::GetPrimaryRayVolumeScatterProbability(const Point2i &pPixel,
                                                                                 bool &scatterPrimary) const {
     Float vsp = -1.f;
+#if defined(PBRT_WITH_OIDN)
     if (imageSpaceGuidingBuffer->IsReady()) {
         vsp = imageSpaceGuidingBuffer->GetVolumeScatterProbabilityEstimate({pPixel.x, pPixel.y});
     } else {
-        vsp = 0.5f;
+          vsp = 0.5f;
     }
+#else
+    vsp = 0.5f;
+#endif
 
     if (std::isnan(vsp) || vsp < 0.f || vsp > 1.f)
         scatterPrimary = false;
